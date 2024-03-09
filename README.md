@@ -1,3 +1,7 @@
+# Biscotti
+
+[![Crates.io](https://img.shields.io/crates/v/biscotti)](https://crates.io/crates/biscotti)
+[![Docs.rs](https://docs.rs/biscotti/badge.svg)](https://docs.rs/biscotti)
 
 <!-- cargo-rdme start -->
 
