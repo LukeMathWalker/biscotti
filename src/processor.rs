@@ -24,6 +24,7 @@ use std::collections::HashMap;
 ///     // You'll use a key loaded from *somewhere* in production—e.g.
 ///     // from a file, environment variable, or a secret management service.
 ///     key: Key::generate(),
+///     secondary_keys: vec![],
 /// });
 /// let processor: Processor = config.into();
 /// ```
@@ -49,12 +50,18 @@ impl From<Config> for Processor {
         let mut rules = HashMap::new();
         for rule in value.crypto_rules.into_iter() {
             let (key_id, _) = keys.insert_full(rule.key);
+            let secondary_key_ids: Vec<_> = rule
+                .secondary_keys
+                .into_iter()
+                .map(|key| keys.insert_full(key).0)
+                .collect();
             for name in &rule.cookie_names {
                 rules.insert(
                     name.clone(),
                     Rule {
                         r#type: rule.r#type.into(),
                         key_id,
+                        secondary_key_ids: secondary_key_ids.clone(),
                     },
                 );
             }
@@ -120,25 +127,28 @@ impl Processor {
         let mut decode_value = false;
 
         if let Some(rule) = self.rules.get(name) {
-            let key = &self.keys[rule.key_id];
-            let value = match rule.r#type {
-                CryptoType::Encryption => {
-                    let key = key.encryption();
-                    crypto::encryption::decrypt(name.as_bytes(), value.as_bytes(), key).map_err(
-                        |e| CryptoError {
-                            r#type: CryptoType::Encryption,
-                            source: e,
-                        },
-                    )
+            let key_ids =
+                std::iter::once(rule.key_id).chain(rule.secondary_key_ids.iter().copied());
+            let value = 'outer: {
+                let mut error = None;
+                for key_id in key_ids {
+                    let key = &self.keys[key_id];
+                    let outcome = process_incoming(key, rule.r#type, name, value);
+                    match outcome {
+                        Ok(value) => {
+                            break 'outer value;
+                        }
+                        Err(e) => {
+                            if error.is_none() {
+                                // We only want to keep the first error.
+                                error = Some(e);
+                            }
+                        }
+                    }
                 }
-                CryptoType::Signing => {
-                    let key = key.signing();
-                    crypto::signing::verify(name.as_bytes(), value, key).map_err(|e| CryptoError {
-                        r#type: CryptoType::Encryption,
-                        source: e,
-                    })
-                }
-            }?;
+                // If we reach this point, we've tried all the keys and none of them worked.
+                return Err(error.unwrap().into());
+            };
             cookie.value = value.into();
         } else {
             decode_value = true;
@@ -217,6 +227,34 @@ impl std::fmt::Display for CryptoError {
 struct Rule {
     r#type: CryptoType,
     key_id: usize,
+    secondary_key_ids: Vec<usize>,
+}
+
+/// Process a cookie value received from the client, either by verifying it or decrypting it.
+fn process_incoming(
+    key: &Key,
+    ty: CryptoType,
+    name: &str,
+    value: &str,
+) -> Result<String, CryptoError> {
+    match ty {
+        CryptoType::Encryption => {
+            let key = key.encryption();
+            crypto::encryption::decrypt(name.as_bytes(), value.as_bytes(), key).map_err(|e| {
+                CryptoError {
+                    r#type: CryptoType::Encryption,
+                    source: e,
+                }
+            })
+        }
+        CryptoType::Signing => {
+            let key = key.signing();
+            crypto::signing::verify(name.as_bytes(), value, key).map_err(|e| CryptoError {
+                r#type: CryptoType::Signing,
+                source: e,
+            })
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -245,7 +283,7 @@ impl From<config::CryptoType> for CryptoType {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{Config, CryptoRule};
+    use crate::config::{Config, CryptoRule, CryptoType};
     use crate::encoding::encode;
     use crate::{Key, Processor, RequestCookies, ResponseCookie};
 
@@ -258,6 +296,7 @@ mod tests {
                 cookie_names: vec![name.to_string()],
                 r#type: crate::config::CryptoType::Encryption,
                 key: Key::generate(),
+                secondary_keys: vec![],
             }],
             ..Default::default()
         }
@@ -292,6 +331,7 @@ mod tests {
                 cookie_names: vec![name.to_string()],
                 r#type: crate::config::CryptoType::Signing,
                 key: Key::generate(),
+                secondary_keys: vec![],
             }],
             ..Default::default()
         }
@@ -332,5 +372,95 @@ mod tests {
 
         assert_eq!(decoded_cookie.name(), name);
         assert_eq!(decoded_cookie.value(), value);
+    }
+
+    #[test]
+    fn signed_with_secondary_is_fine() {
+        let name = "signed";
+        let value = "tamper-proof";
+        let primary_key = Key::generate();
+        let secondary_keys = vec![Key::generate(), Key::generate(), Key::generate()];
+        let secondary_key = secondary_keys[1].clone();
+
+        let processor: Processor = Config {
+            crypto_rules: vec![CryptoRule {
+                cookie_names: vec![name.to_string()],
+                r#type: CryptoType::Signing,
+                key: secondary_key.clone(),
+                secondary_keys: vec![],
+            }],
+            ..Default::default()
+        }
+        .into();
+        let cookie = ResponseCookie::new(name, value);
+        // Signed with the secondary key.
+        let secured_cookie = processor.process_outgoing(cookie);
+        assert_ne!(secured_cookie.value(), value);
+
+        let header = format!("{}={}", secured_cookie.name(), secured_cookie.value());
+        let processor: Processor = Config {
+            crypto_rules: vec![CryptoRule {
+                cookie_names: vec![name.to_string()],
+                r#type: CryptoType::Signing,
+                // Primary key has changed!
+                key: primary_key.clone(),
+                secondary_keys,
+            }],
+            ..Default::default()
+        }
+        .into();
+        let request_cookies = RequestCookies::parse_header(&header, &processor)
+            .expect("Failed to parse the signed cookie");
+        let verified_cookie = request_cookies
+            .get(name)
+            .expect("Failed to get the signed cookie");
+
+        assert_eq!(verified_cookie.name(), name);
+        assert_eq!(verified_cookie.value(), value);
+    }
+
+    #[test]
+    fn encrypted_with_secondary_is_fine() {
+        let name = "encrypted";
+        let value = "tamper-proof";
+        let primary_key = Key::generate();
+        let secondary_keys = vec![Key::generate(), Key::generate(), Key::generate()];
+        let secondary_key = secondary_keys[1].clone();
+
+        let processor: Processor = Config {
+            crypto_rules: vec![CryptoRule {
+                cookie_names: vec![name.to_string()],
+                r#type: CryptoType::Encryption,
+                key: secondary_key.clone(),
+                secondary_keys: vec![],
+            }],
+            ..Default::default()
+        }
+        .into();
+        let cookie = ResponseCookie::new(name, value);
+        // Signed with the secondary key.
+        let secured_cookie = processor.process_outgoing(cookie);
+        assert_ne!(secured_cookie.value(), value);
+
+        let header = format!("{}={}", secured_cookie.name(), secured_cookie.value());
+        let processor: Processor = Config {
+            crypto_rules: vec![CryptoRule {
+                cookie_names: vec![name.to_string()],
+                r#type: CryptoType::Encryption,
+                // Primary key has changed!
+                key: primary_key.clone(),
+                secondary_keys,
+            }],
+            ..Default::default()
+        }
+        .into();
+        let request_cookies = RequestCookies::parse_header(&header, &processor)
+            .expect("Failed to parse the encrypted cookie");
+        let decrypted_cookie = request_cookies
+            .get(name)
+            .expect("Failed to get the encrypted cookie");
+
+        assert_eq!(decrypted_cookie.name(), name);
+        assert_eq!(decrypted_cookie.value(), value);
     }
 }

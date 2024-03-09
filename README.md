@@ -18,6 +18,7 @@ In particular:
 - It can handle multiple request cookies with the same name
 - It lets you add multiple cookies with the same name but different paths or domains
 - Cookies are percent-encoded/decoded by default (but you can opt out)
+- It has built-in support for rotating signing/encryption keys over time
 
 # Non-goals
 
