@@ -86,7 +86,10 @@
 //! `biscotti` started as a `cookie` fork and it includes non-negligible portions of its
 //! code.
 //!
-//! [`Config`]: config::Config
+//! [`Config`]: crate::config::Config
+//! [`Processor`]: crate::Processor
+//! [`RequestCookies`]: crate::RequestCookies
+//! [`ResponseCookies`]: crate::ResponseCookies
 
 pub mod config;
 mod crypto;
