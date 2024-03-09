@@ -11,6 +11,7 @@ const COMBINED_KEY_LENGTH: usize = SIGNING_KEY_LEN + ENCRYPTION_KEY_LEN;
 #[derive(Clone, Eq, Hash)]
 pub struct Key([u8; COMBINED_KEY_LENGTH]);
 
+#[cfg(feature = "serde")]
 mod deser {
     use crate::Key;
     use serde::Deserializer;

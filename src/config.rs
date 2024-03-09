@@ -35,6 +35,7 @@ use crate::Key;
 /// [`Processor`]: crate::Processor
 #[derive(Debug, Clone)]
 #[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct Config {
     /// If `true`, all cookie values and names are automatically:
     ///
@@ -57,6 +58,7 @@ pub struct Config {
 
 /// `CryptoRule` specifies whether certain cookies should be encrypted or signed.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct CryptoRule {
     /// The names of the cookies to which this rule applies.
     pub cookie_names: Vec<String>,
@@ -73,6 +75,7 @@ pub struct CryptoRule {
 
 /// The two cryptographic processes that can be applied to a cookie value.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub enum CryptoType {
     /// The cookie value should be encrypted.  
     /// Encryption guarantees **confidentiality** of the value as well as its
