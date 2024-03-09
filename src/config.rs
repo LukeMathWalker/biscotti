@@ -71,6 +71,28 @@ pub struct CryptoRule {
     /// The key must be at least 64 bytes long and should be generated using a
     /// cryptographically secure random number generator.
     pub key: Key,
+    /// Secondary keys are used to decrypt/verify request cookies that failed to
+    /// be decrypted/verified using the primary key.  
+    /// Secondary keys are never used to encrypt/sign response cookies.
+    ///
+    /// # Key rotation
+    ///
+    /// Secondary keys exist to enable **key rotation**.  
+    /// From time to time, you may want to change the key used to sign or encrypt cookies.  
+    /// If you do this naively (i.e. change [`CryptoRule::key`] to a new value), the server  
+    /// will immediately start rejecting all existing cookies
+    /// because they were signed/encrypted with the old key.
+    ///
+    /// Using secondary keys, you can start using the new key _without_ invalidating all existing
+    /// cookies.
+    /// The process is as follows:
+    ///
+    /// 1. Generate a new key
+    /// 2. Set `key` to the new key, and add the old key to the `secondary_keys` vector
+    /// 3. Wait for the expiration of all cookies signed/encrypted with the old key
+    /// 4. Remove the old key from the `secondary_keys` vector
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub secondary_keys: Vec<Key>,
 }
 
 /// The two cryptographic processes that can be applied to a cookie value.
