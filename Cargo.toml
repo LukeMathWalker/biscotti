@@ -1,0 +1,18 @@
+[package]
+name = "biscotti"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+percent-encoding = "2.0"
+subtle = "2.5.0"
+sha2 = "0.10"
+rand = "0.8"
+aes-gcm = "0.10.3"
+base64 = "0.22.0"
+hmac = "0.12.1"
+thiserror = "1.0.57"
+indexmap = "2.2.5"
+anyhow = "1"
+serde = "1.0.197"
