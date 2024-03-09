@@ -9,6 +9,8 @@ readme = "README.md"
 description = """
 HTTP cookie management for Rust servers.
 """
+categories = ["web-programming::http-server"]
+keywords = ["cookies", "http", "web", "cookie"]
 
 [features]
 default = ["serde"]
