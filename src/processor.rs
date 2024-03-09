@@ -24,6 +24,7 @@ use std::collections::HashMap;
 ///     // You'll use a key loaded from *somewhere* in production—e.g.
 ///     // from a file, environment variable, or a secret management service.
 ///     key: Key::generate(),
+///     secondary_keys: vec![],
 /// });
 /// let processor: Processor = config.into();
 /// ```
