@@ -7,7 +7,7 @@
 
 A crate to handle HTTP cookies in a Rust server.
 
-# Overview
+## Overview
 
 You can use `biscotti` to handle cookies in your server.  
 
@@ -24,14 +24,14 @@ In particular:
 - Cookies are percent-encoded/decoded by default (but you can opt out)
 - It has built-in support for rotating signing/encryption keys over time
 
-# Non-goals
+## Non-goals
 
 `biscotti` is not designed to handle cookies on the client side.  
 It doesn't provide any logic to parse the `Set-Cookie` headers returned in a server response.
 
-# Quickstart
+## Quickstart
 
-## Incoming cookies
+### Incoming cookies
 
 ```rust
 use biscotti::{Processor, config::Config, RequestCookies};
@@ -57,7 +57,7 @@ assert_eq!(cookies.get("name2").unwrap().value(), "val");
 assert_eq!(cookies.get_all("name2").unwrap().len(), 1);
 ```
 
-## Outgoing cookies
+### Outgoing cookies
 
 ```rust
 use std::collections::HashSet;
@@ -87,7 +87,7 @@ assert_eq!(header_values, HashSet::from([
 ]));
 ```
 
-## Credits
+### Credits
 
 `biscotti` is heavily inspired by the [`cookie` crate](https://crates.io/crates/cookie) [Copyright (c) 2017 Sergio Benitez,
 Copyright (c) 2014 Alex Crichton].  
