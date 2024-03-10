@@ -375,6 +375,51 @@ mod tests {
     }
 
     #[test]
+    fn unsigned_is_rejected() {
+        let name = "session";
+        let value = "a-value-that-should-be-signed-but-is-not";
+        let header = format!("{name}={value}");
+
+        let processor: Processor = Config {
+            crypto_rules: vec![CryptoRule {
+                cookie_names: vec![name.to_string()],
+                r#type: CryptoType::Signing,
+                key: Key::generate(),
+                secondary_keys: vec![],
+            }],
+            ..Default::default()
+        }
+        .into();
+        let err = RequestCookies::parse_header(&header, &processor)
+            .expect_err("A non-signed cookie passed verification, bad!");
+        assert_eq!(err.to_string(), "Failed to process a signed request cookie");
+    }
+
+    #[test]
+    fn unencrypted_is_rejected() {
+        let name = "session";
+        let value = "a-value-that-should-be-encrypted-but-is-not";
+        let header = format!("{name}={value}");
+
+        let processor: Processor = Config {
+            crypto_rules: vec![CryptoRule {
+                cookie_names: vec![name.to_string()],
+                r#type: CryptoType::Encryption,
+                key: Key::generate(),
+                secondary_keys: vec![],
+            }],
+            ..Default::default()
+        }
+        .into();
+        let err = RequestCookies::parse_header(&header, &processor)
+            .expect_err("A non-encrypted cookie passed, bad!");
+        assert_eq!(
+            err.to_string(),
+            "Failed to process an encrypted request cookie"
+        );
+    }
+
+    #[test]
     fn signed_with_secondary_is_fine() {
         let name = "signed";
         let value = "tamper-proof";
