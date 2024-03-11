@@ -19,16 +19,16 @@ use crate::Key;
 ///
 /// ```rust
 /// use biscotti::{Processor, Key};
-/// use biscotti::config::{Config, CryptoRule, CryptoType};
+/// use biscotti::config::{Config, CryptoRule, CryptoAlgorithm};
 ///
 /// let mut config = Config::default();
 /// config.crypto_rules.push(CryptoRule {
 ///     cookie_names: vec!["session".to_string()],
-///     r#type: CryptoType::Encryption,
+///     algorithm: CryptoAlgorithm::Encryption,
 ///     // You'll use a key loaded from *somewhere* in production—e.g.
 ///     // from a file, environment variable, or a secret management service.
 ///     key: Key::generate(),
-///     secondary_keys: vec![],
+///     fallbacks: vec![],
 /// });
 /// let processor: Processor = config.into();
 /// ```
@@ -64,7 +64,7 @@ pub struct CryptoRule {
     /// The names of the cookies to which this rule applies.
     pub cookie_names: Vec<String>,
     /// How the cookies should be secured: either encryption or signing.
-    pub r#type: CryptoType,
+    pub algorithm: CryptoAlgorithm,
     /// The key to use for encryption or signing.
     ///
     /// # Requirements
@@ -72,34 +72,50 @@ pub struct CryptoRule {
     /// The key must be at least 64 bytes long and should be generated using a
     /// cryptographically secure random number generator.
     pub key: Key,
-    /// Secondary keys are used to decrypt/verify request cookies that failed to
+    /// Fallbacks are used to decrypt/verify request cookies that failed to
     /// be decrypted/verified using the primary key.  
-    /// Secondary keys are never used to encrypt/sign response cookies.
+    /// Fallbacks are never used to encrypt/sign response cookies.
     ///
     /// # Key rotation
     ///
-    /// Secondary keys exist to enable **key rotation**.  
-    /// From time to time, you may want to change the key used to sign or encrypt cookies.  
-    /// If you do this naively (i.e. change [`CryptoRule::key`] to a new value), the server  
-    /// will immediately start rejecting all existing cookies
-    /// because they were signed/encrypted with the old key.
+    /// Fallbacks exist to enable **key and algorithm rotation**.  
+    /// From time to time, you may want to change the key used to sign or encrypt cookies, or update
+    /// the algorithm.  
+    /// If you do this naively
+    /// (e.g. change [`CryptoRule::key`] or [`CryptoRule::algorithm`] to a new value),
+    /// the server will immediately start rejecting all existing cookies
+    /// because they were signed/encrypted with the old key/algorithm.
     ///
-    /// Using secondary keys, you can start using the new key _without_ invalidating all existing
+    /// With fallbacks, you can start using the new configuration _without_ invalidating all existing
     /// cookies.
-    /// The process is as follows:
+    /// The process for key rotation goes as follows:
     ///
     /// 1. Generate a new key
-    /// 2. Set `key` to the new key, and add the old key to the `secondary_keys` vector
+    /// 2. Set `key` to the new key,
+    ///    and add the old key to the `fallbacks` vector, using the same algorithm
     /// 3. Wait for the expiration of all cookies signed/encrypted with the old key
-    /// 4. Remove the old key from the `secondary_keys` vector
+    /// 4. Remove the old key from the `fallbacks` vector
     #[cfg_attr(feature = "serde", serde(default))]
-    pub secondary_keys: Vec<Key>,
+    pub fallbacks: Vec<FallbackConfig>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+/// A fallback configuration for either decrypting or verifying a cookie.
+///
+/// Check out [`CryptoRule::fallbacks`] for more information.
+pub struct FallbackConfig {
+    /// The key to use for encryption or signing.
+    pub key: Key,
+    /// How the cookies should be secured.
+    pub algorithm: CryptoAlgorithm,
 }
 
 /// The two cryptographic processes that can be applied to a cookie value.
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-pub enum CryptoType {
+#[non_exhaustive]
+pub enum CryptoAlgorithm {
     /// The cookie value should be encrypted.  
     /// Encryption guarantees **confidentiality** of the value as well as its
     /// **integrity**.
