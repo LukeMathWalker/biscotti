@@ -244,7 +244,3 @@ mod test {
         assert_eq!(format!("{:?}", key), "Key(\"***\")");
     }
 }
-
-pub(crate) mod encryption {}
-
-pub(crate) mod signing {}
