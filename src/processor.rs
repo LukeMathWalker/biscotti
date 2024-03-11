@@ -241,7 +241,7 @@ impl CryptoConfig {
                         source: e,
                     })
             }
-            Self::Signing { key } => key.verify(name.as_bytes(), value).map_err(|e| CryptoError {
+            Self::Signing { key } => key.verify(name, value).map_err(|e| CryptoError {
                 r#type: CryptoAlgorithm::Signing,
                 source: e,
             }),
@@ -252,7 +252,7 @@ impl CryptoConfig {
     fn process_outgoing(&self, name: &str, value: &str) -> String {
         match self {
             Self::Encryption { key } => key.encrypt(name.as_bytes(), value.as_bytes()),
-            Self::Signing { key } => key.sign(name.as_bytes(), value),
+            Self::Signing { key } => key.sign(name, value),
         }
     }
 }

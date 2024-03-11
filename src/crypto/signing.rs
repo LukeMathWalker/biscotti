@@ -35,10 +35,11 @@ impl SigningKey {
     }
 
     /// Signs the cookie's value providing integrity and authenticity.
-    pub(crate) fn sign(&self, name: &[u8], value: &str) -> String {
+    pub(crate) fn sign(&self, name: &str, value: &str) -> String {
         // Compute HMAC-SHA256 of the cookie's value prepended with the cookie's name.
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.0).expect("Key is too short");
-        mac.update(name);
+        mac.update(name.as_bytes());
+        mac.update(&[SEPARATOR]);
         mac.update(value.as_bytes());
 
         // Cookie's new value is [MAC | original-value].
@@ -51,7 +52,7 @@ impl SigningKey {
     /// Given a signed value `str` where the signature is prepended to `value`,
     /// verifies the signed value and returns it. If there's a problem, returns
     /// an `Err` with a string describing the issue.
-    pub(crate) fn verify(&self, name: &[u8], value: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn verify(&self, name: &str, value: &str) -> Result<String, anyhow::Error> {
         let value = BASE64_URL_SAFE_NO_PAD
             .decode(value)
             .context("Failed to decode cookie value using base64 (URL-safe, no padding)")?;
@@ -66,7 +67,8 @@ impl SigningKey {
 
         // Perform the verification.
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.0).expect("Key is too short");
-        mac.update(name);
+        mac.update(name.as_bytes());
+        mac.update(&[SEPARATOR]);
         mac.update(value);
         mac.verify_slice(digest)
             .context("Failed to verify cookie value using HMAC")?;
@@ -76,3 +78,11 @@ impl SigningKey {
             .to_string())
     }
 }
+
+/// `0xFF` is not valid UTF8 (https://en.wikipedia.org/wiki/UTF-8#Invalid_sequences_and_error_handling).
+/// Thus we can use it as a separator to ensure that there is no confusion as to where the cookie name ends
+/// and the cookie value begins.
+///
+/// This prevents an attacker from taking a signed cookie, splitting `CONCAT(name, value)` at a different point than the
+/// original and being able to reuse the original signature.
+const SEPARATOR: u8 = 0;
