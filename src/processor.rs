@@ -15,16 +15,16 @@ use std::collections::HashMap;
 ///
 /// ```rust
 /// use biscotti::{Processor, Key};
-/// use biscotti::config::{Config, CryptoRule, CryptoType};
+/// use biscotti::config::{Config, CryptoRule, CryptoAlgorithm};
 ///
 /// let mut config = Config::default();
 /// config.crypto_rules.push(CryptoRule {
 ///     cookie_names: vec!["session".to_string()],
-///     r#type: CryptoType::Encryption,
+///     algorithm: CryptoAlgorithm::Encryption,
 ///     // You'll use a key loaded from *somewhere* in production—e.g.
 ///     // from a file, environment variable, or a secret management service.
 ///     key: Key::generate(),
-///     secondary_keys: vec![],
+///     fallbacks: vec![],
 /// });
 /// let processor: Processor = config.into();
 /// ```
@@ -50,18 +50,27 @@ impl From<Config> for Processor {
         let mut rules = HashMap::new();
         for rule in value.crypto_rules.into_iter() {
             let (key_id, _) = keys.insert_full(rule.key);
-            let secondary_key_ids: Vec<_> = rule
-                .secondary_keys
+            let primary = CryptoConfig {
+                key_id,
+                algorithm: rule.algorithm.into(),
+            };
+            let fallbacks: Vec<_> = rule
+                .fallbacks
                 .into_iter()
-                .map(|key| keys.insert_full(key).0)
+                .map(|config| {
+                    let key_id = keys.insert_full(config.key).0;
+                    CryptoConfig {
+                        key_id,
+                        algorithm: config.algorithm.into(),
+                    }
+                })
                 .collect();
             for name in &rule.cookie_names {
                 rules.insert(
                     name.clone(),
                     Rule {
-                        r#type: rule.r#type.into(),
-                        key_id,
-                        secondary_key_ids: secondary_key_ids.clone(),
+                        primary,
+                        fallbacks: fallbacks.clone(),
                     },
                 );
             }
@@ -82,9 +91,10 @@ impl Processor {
             cookie.name = name.into();
         }
         if let Some(rule) = self.rules.get(cookie.name.as_ref()) {
-            let key = &self.keys[rule.key_id];
-            let value = match rule.r#type {
-                CryptoType::Encryption => {
+            let primary = rule.primary;
+            let key = &self.keys[primary.key_id];
+            let value = match primary.algorithm {
+                CryptoAlgorithm::Encryption => {
                     let key = key.encryption();
                     crypto::encryption::encrypt(
                         cookie.name.as_bytes(),
@@ -92,7 +102,7 @@ impl Processor {
                         key,
                     )
                 }
-                CryptoType::Signing => {
+                CryptoAlgorithm::Signing => {
                     let key = key.signing();
                     crypto::signing::sign(cookie.name.as_bytes(), cookie.value.as_ref(), key)
                 }
@@ -127,13 +137,11 @@ impl Processor {
         let mut decode_value = false;
 
         if let Some(rule) = self.rules.get(name) {
-            let key_ids =
-                std::iter::once(rule.key_id).chain(rule.secondary_key_ids.iter().copied());
+            let configs = std::iter::once(rule.primary).chain(rule.fallbacks.iter().copied());
             let value = 'outer: {
                 let mut error = None;
-                for key_id in key_ids {
-                    let key = &self.keys[key_id];
-                    let outcome = process_incoming(key, rule.r#type, name, value);
+                for config in configs {
+                    let outcome = process_incoming(config, &self.keys, name, value);
                     match outcome {
                         Ok(value) => {
                             break 'outer value;
@@ -197,7 +205,7 @@ pub enum ProcessIncomingError {
 ///
 /// This error is returned by [`Processor::process_incoming`].
 pub struct CryptoError {
-    r#type: CryptoType,
+    r#type: CryptoAlgorithm,
     #[source]
     source: anyhow::Error,
 }
@@ -216,8 +224,8 @@ pub struct DecodingError {
 impl std::fmt::Display for CryptoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let t = match self.r#type {
-            CryptoType::Encryption => "an encrypted",
-            CryptoType::Signing => "a signed",
+            CryptoAlgorithm::Encryption => "an encrypted",
+            CryptoAlgorithm::Signing => "a signed",
         };
         write!(f, "Failed to process {t} request cookie")
     }
@@ -225,32 +233,38 @@ impl std::fmt::Display for CryptoError {
 
 #[derive(Debug, Clone)]
 struct Rule {
-    r#type: CryptoType,
+    primary: CryptoConfig,
+    fallbacks: Vec<CryptoConfig>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CryptoConfig {
     key_id: usize,
-    secondary_key_ids: Vec<usize>,
+    algorithm: CryptoAlgorithm,
 }
 
 /// Process a cookie value received from the client, either by verifying it or decrypting it.
 fn process_incoming(
-    key: &Key,
-    ty: CryptoType,
+    config: CryptoConfig,
+    keys: &IndexSet<Key>,
     name: &str,
     value: &str,
 ) -> Result<String, CryptoError> {
-    match ty {
-        CryptoType::Encryption => {
+    let key = &keys[config.key_id];
+    match config.algorithm {
+        CryptoAlgorithm::Encryption => {
             let key = key.encryption();
             crypto::encryption::decrypt(name.as_bytes(), value.as_bytes(), key).map_err(|e| {
                 CryptoError {
-                    r#type: CryptoType::Encryption,
+                    r#type: CryptoAlgorithm::Encryption,
                     source: e,
                 }
             })
         }
-        CryptoType::Signing => {
+        CryptoAlgorithm::Signing => {
             let key = key.signing();
             crypto::signing::verify(name.as_bytes(), value, key).map_err(|e| CryptoError {
-                r#type: CryptoType::Signing,
+                r#type: CryptoAlgorithm::Signing,
                 source: e,
             })
         }
@@ -258,32 +272,32 @@ fn process_incoming(
 }
 
 #[derive(Debug, Clone, Copy)]
-enum CryptoType {
+enum CryptoAlgorithm {
     Encryption,
     Signing,
 }
 
-impl std::fmt::Display for CryptoType {
+impl std::fmt::Display for CryptoAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CryptoType::Encryption => write!(f, "encryption"),
-            CryptoType::Signing => write!(f, "signing"),
+            CryptoAlgorithm::Encryption => write!(f, "encryption"),
+            CryptoAlgorithm::Signing => write!(f, "signing"),
         }
     }
 }
 
-impl From<config::CryptoType> for CryptoType {
-    fn from(value: config::CryptoType) -> Self {
+impl From<config::CryptoAlgorithm> for CryptoAlgorithm {
+    fn from(value: config::CryptoAlgorithm) -> Self {
         match value {
-            config::CryptoType::Encryption => CryptoType::Encryption,
-            config::CryptoType::Signing => CryptoType::Signing,
+            config::CryptoAlgorithm::Encryption => CryptoAlgorithm::Encryption,
+            config::CryptoAlgorithm::Signing => CryptoAlgorithm::Signing,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{Config, CryptoRule, CryptoType};
+    use crate::config::{Config, CryptoAlgorithm, CryptoRule, FallbackConfig};
     use crate::encoding::encode;
     use crate::{Key, Processor, RequestCookies, ResponseCookie};
 
@@ -294,9 +308,9 @@ mod tests {
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: crate::config::CryptoType::Encryption,
+                algorithm: CryptoAlgorithm::Encryption,
                 key: Key::generate(),
-                secondary_keys: vec![],
+                fallbacks: vec![],
             }],
             ..Default::default()
         }
@@ -329,9 +343,9 @@ mod tests {
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: crate::config::CryptoType::Signing,
+                algorithm: CryptoAlgorithm::Signing,
                 key: Key::generate(),
-                secondary_keys: vec![],
+                fallbacks: vec![],
             }],
             ..Default::default()
         }
@@ -383,9 +397,9 @@ mod tests {
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: CryptoType::Signing,
+                algorithm: CryptoAlgorithm::Signing,
                 key: Key::generate(),
-                secondary_keys: vec![],
+                fallbacks: vec![],
             }],
             ..Default::default()
         }
@@ -404,9 +418,9 @@ mod tests {
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: CryptoType::Encryption,
+                algorithm: CryptoAlgorithm::Encryption,
                 key: Key::generate(),
-                secondary_keys: vec![],
+                fallbacks: vec![],
             }],
             ..Default::default()
         }
@@ -424,15 +438,28 @@ mod tests {
         let name = "signed";
         let value = "tamper-proof";
         let primary_key = Key::generate();
-        let secondary_keys = vec![Key::generate(), Key::generate(), Key::generate()];
-        let secondary_key = secondary_keys[1].clone();
+        let fallbacks = vec![
+            FallbackConfig {
+                key: Key::generate(),
+                algorithm: CryptoAlgorithm::Signing,
+            },
+            FallbackConfig {
+                key: Key::generate(),
+                algorithm: CryptoAlgorithm::Signing,
+            },
+            FallbackConfig {
+                key: Key::generate(),
+                algorithm: CryptoAlgorithm::Signing,
+            },
+        ];
+        let fallback = fallbacks[1].clone();
 
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: CryptoType::Signing,
-                key: secondary_key.clone(),
-                secondary_keys: vec![],
+                algorithm: fallback.algorithm,
+                key: fallback.key.clone(),
+                fallbacks: vec![],
             }],
             ..Default::default()
         }
@@ -446,10 +473,10 @@ mod tests {
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: CryptoType::Signing,
+                algorithm: CryptoAlgorithm::Signing,
                 // Primary key has changed!
                 key: primary_key.clone(),
-                secondary_keys,
+                fallbacks,
             }],
             ..Default::default()
         }
@@ -469,15 +496,28 @@ mod tests {
         let name = "encrypted";
         let value = "tamper-proof";
         let primary_key = Key::generate();
-        let secondary_keys = vec![Key::generate(), Key::generate(), Key::generate()];
-        let secondary_key = secondary_keys[1].clone();
+        let fallbacks = vec![
+            FallbackConfig {
+                key: Key::generate(),
+                algorithm: CryptoAlgorithm::Signing,
+            },
+            FallbackConfig {
+                key: Key::generate(),
+                algorithm: CryptoAlgorithm::Signing,
+            },
+            FallbackConfig {
+                key: Key::generate(),
+                algorithm: CryptoAlgorithm::Signing,
+            },
+        ];
+        let fallback = fallbacks[1].clone();
 
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: CryptoType::Encryption,
-                key: secondary_key.clone(),
-                secondary_keys: vec![],
+                algorithm: fallback.algorithm,
+                key: fallback.key.clone(),
+                fallbacks: vec![],
             }],
             ..Default::default()
         }
@@ -491,10 +531,10 @@ mod tests {
         let processor: Processor = Config {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
-                r#type: CryptoType::Encryption,
+                algorithm: CryptoAlgorithm::Encryption,
                 // Primary key has changed!
                 key: primary_key.clone(),
-                secondary_keys,
+                fallbacks,
             }],
             ..Default::default()
         }
