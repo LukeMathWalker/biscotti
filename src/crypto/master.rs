@@ -1,4 +1,4 @@
-use aes_gcm::aead::rand_core::RngCore;
+use rand::RngCore;
 
 const MINIMUM_KEY_LENGTH: usize = 64;
 
@@ -34,7 +34,7 @@ impl PartialEq for Key {
 
 impl std::fmt::Debug for Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Key").finish()
+        f.debug_tuple("Key").field(&"***").finish()
     }
 }
 
@@ -214,17 +214,8 @@ impl TryFrom<Vec<u8>> for Key {
 #[cfg(test)]
 mod test {
     use super::Key;
-
-    #[test]
-    fn from_works() {
-        let key = Key::from((0..64).collect::<Vec<_>>());
-
-        let signing: Vec<u8> = (0..32).collect();
-        assert_eq!(key.signing(), &*signing);
-
-        let encryption: Vec<u8> = (32..64).collect();
-        assert_eq!(key.encryption(), &*encryption);
-    }
+    use crate::crypto::encryption::EncryptionKey;
+    use crate::crypto::signing::SigningKey;
 
     #[test]
     fn try_from_works() {
@@ -242,15 +233,15 @@ mod test {
         let key_a = Key::generate();
         let key_b = Key::generate();
 
-        assert_ne!(key_a.signing(), key_b.signing());
-        assert_ne!(key_a.encryption(), key_b.encryption());
+        assert_ne!(SigningKey::derive(&key_a), SigningKey::derive(&key_b));
+        assert_ne!(EncryptionKey::derive(&key_a), EncryptionKey::derive(&key_b));
     }
 
     #[test]
     fn debug_does_not_leak_key() {
         let key = Key::generate();
 
-        assert_eq!(format!("{:?}", key), "Key");
+        assert_eq!(format!("{:?}", key), "Key(\"***\")");
     }
 }
 
