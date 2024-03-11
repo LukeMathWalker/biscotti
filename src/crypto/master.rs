@@ -1,6 +1,6 @@
 use rand::RngCore;
 
-const MINIMUM_KEY_LENGTH: usize = 64;
+const MINIMUM_KEY_LENGTH: usize = 32;
 
 /// A cryptographic master key to sign or encrypt cookies.
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -39,12 +39,12 @@ impl std::fmt::Debug for Key {
 }
 
 impl Key {
-    /// Creates a new [`Key`] from a string that's at least 512-bits (64 bytes) long.  
+    /// Creates a new [`Key`] from a string that's at least 256-bits (32 bytes) long.  
     /// For security, the master key _must_ be cryptographically random.
     ///
     /// # Panics
     ///
-    /// Panics if `key` is less than 64 bytes in length.
+    /// Panics if `key` is less than 32 bytes in length.
     ///
     /// For a non-panicking version, use [`crate::Key::try_from()`] or generate a key with
     /// [`Key::generate()`] or [`Key::try_generate()`].
@@ -55,9 +55,9 @@ impl Key {
     /// use biscotti::Key;
     ///
     /// # /*
-    /// let key = { /* a cryptographically random key >= 64 bytes */ };
+    /// let key = { /* a cryptographically random key >= 32 bytes */ };
     /// # */
-    /// # let key: Vec<u8> = (0..64).collect();
+    /// # let key: Vec<u8> = (0..32).collect();
     ///
     /// let key = Key::from(key);
     /// ```
@@ -103,7 +103,7 @@ impl Key {
         Some(Key::from(key))
     }
 
-    /// Returns the raw bytes of the master key. Guaranteed to be at least 64
+    /// Returns the raw bytes of the master key. Guaranteed to be at least 32
     /// bytes.
     ///
     /// # Example
@@ -163,9 +163,9 @@ impl TryFrom<&[u8]> for Key {
     /// use biscotti::Key;
     ///
     /// # /*
-    /// let key = { /* a cryptographically random key >= 64 bytes */ };
+    /// let key = { /* a cryptographically random key >= 32 bytes */ };
     /// # */
-    /// # let key: &Vec<u8> = &(0..64).collect();
+    /// # let key: &Vec<u8> = &(0..32).collect();
     /// # let key: &[u8] = &key[..];
     /// assert!(Key::try_from(key).is_ok());
     ///
@@ -193,9 +193,9 @@ impl TryFrom<Vec<u8>> for Key {
     /// use biscotti::Key;
     ///
     /// # /*
-    /// let key = { /* a cryptographically random key >= 64 bytes */ };
+    /// let key = { /* a cryptographically random key >= 32 bytes */ };
     /// # */
-    /// # let key: Vec<u8> = (0..64).collect();
+    /// # let key: Vec<u8> = (0..32).collect();
     /// assert!(Key::try_from(key).is_ok());
     ///
     /// // A key that's far too short to use.
@@ -220,8 +220,8 @@ mod test {
     #[test]
     fn try_from_works() {
         use core::convert::TryInto;
-        let data = (0..64).collect::<Vec<_>>();
-        let key_res: Result<Key, _> = data[0..63].try_into();
+        let data = (0..32).collect::<Vec<_>>();
+        let key_res: Result<Key, _> = data[0..31].try_into();
         assert!(key_res.is_err());
 
         let key_res: Result<Key, _> = data.as_slice().try_into();

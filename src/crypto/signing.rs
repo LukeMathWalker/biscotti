@@ -1,6 +1,4 @@
 use crate::Key;
-use aes_gcm_siv::aead::consts::U64;
-use aes_gcm_siv::aead::generic_array::GenericArray;
 use anyhow::Context;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -9,7 +7,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
 #[derive(Clone, Copy)]
-pub(crate) struct SigningKey(GenericArray<u8, U64>);
+pub(crate) struct SigningKey([u8; 32]);
 
 impl std::fmt::Debug for SigningKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -28,18 +26,18 @@ impl PartialEq for SigningKey {
 impl SigningKey {
     /// Derives the HMAC-256 key from the master key.
     pub(crate) fn derive(key: &Key) -> Self {
-        let mut derived = [0; 64];
+        let mut derived = [0; 32];
         hkdf::Hkdf::<Sha256>::from_prk(key.master())
             .expect("Couldn't create HKDF from PRK")
             .expand(b"COOKIE;HMAC-SHA256", &mut derived)
             .expect("Failed to derive HMAC-SHA256 key from PRK");
-        Self(GenericArray::from(derived))
+        Self(derived)
     }
 
     /// Signs the cookie's value providing integrity and authenticity.
     pub(crate) fn sign(&self, name: &[u8], value: &str) -> String {
         // Compute HMAC-SHA256 of the cookie's value prepended with the cookie's name.
-        let mut mac = Hmac::<Sha256>::new(&self.0);
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.0).expect("Key is too short");
         mac.update(name);
         mac.update(value.as_bytes());
 
@@ -67,7 +65,7 @@ impl SigningKey {
         let (digest, value) = value.split_at(Hmac::<Sha256>::output_size());
 
         // Perform the verification.
-        let mut mac = Hmac::<Sha256>::new(&self.0);
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.0).expect("Key is too short");
         mac.update(name);
         mac.update(value);
         mac.verify_slice(digest)
