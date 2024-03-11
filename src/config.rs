@@ -116,11 +116,13 @@ pub struct FallbackConfig {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 #[non_exhaustive]
 pub enum CryptoAlgorithm {
-    /// The cookie value should be encrypted.  
+    /// The cookie value will be encrypted using [AEAD-AES-256-GCM-SIV](https://www.rfc-editor.org/rfc/rfc8452.html).
+    ///
     /// Encryption guarantees **confidentiality** of the value as well as its
     /// **integrity**.
     Encryption,
-    /// The cookie value should be signed using this key.
+    /// The cookie will be signed using [HMAC-SHA256](https://www.rfc-editor.org/rfc/rfc2104.html).  
+    ///
     /// Signing guarantees **integrity** of the value.
     Signing,
 }
