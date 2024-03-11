@@ -1,9 +1,10 @@
 use crate::config::Config;
+use crate::crypto::encryption::EncryptionKey;
+use crate::crypto::signing::SigningKey;
 use crate::crypto::Key;
 use crate::encoding::encode;
-use crate::{config, crypto, RequestCookie, ResponseCookie};
+use crate::{config, RequestCookie, ResponseCookie};
 use anyhow::Context;
-use indexmap::IndexSet;
 use percent_encoding::percent_decode;
 use std::collections::HashMap;
 
@@ -40,34 +41,26 @@ use std::collections::HashMap;
 /// [`RequestCookies::parse_header`]: crate::RequestCookies::parse_header
 pub struct Processor {
     percent_encode: bool,
-    keys: IndexSet<Key>,
     rules: HashMap<String, Rule>,
 }
 
 impl From<Config> for Processor {
     fn from(value: Config) -> Self {
-        let mut keys = IndexSet::with_capacity(value.crypto_rules.len());
-        let mut rules = HashMap::new();
+        let mut processor = Processor {
+            percent_encode: value.percent_encode,
+            rules: HashMap::new(),
+        };
+
         for rule in value.crypto_rules.into_iter() {
-            let (key_id, _) = keys.insert_full(rule.key);
-            let primary = CryptoConfig {
-                key_id,
-                algorithm: rule.algorithm.into(),
-            };
+            let primary = CryptoConfig::new(&rule.key, rule.algorithm.into());
             let fallbacks: Vec<_> = rule
                 .fallbacks
                 .into_iter()
-                .map(|config| {
-                    let key_id = keys.insert_full(config.key).0;
-                    CryptoConfig {
-                        key_id,
-                        algorithm: config.algorithm.into(),
-                    }
-                })
+                .map(|config| CryptoConfig::new(&config.key, config.algorithm.into()))
                 .collect();
-            for name in &rule.cookie_names {
-                rules.insert(
-                    name.clone(),
+            for name in rule.cookie_names {
+                processor.rules.insert(
+                    name,
                     Rule {
                         primary,
                         fallbacks: fallbacks.clone(),
@@ -75,11 +68,7 @@ impl From<Config> for Processor {
                 );
             }
         }
-        Processor {
-            percent_encode: value.percent_encode,
-            keys,
-            rules,
-        }
+        processor
     }
 }
 
@@ -91,22 +80,7 @@ impl Processor {
             cookie.name = name.into();
         }
         if let Some(rule) = self.rules.get(cookie.name.as_ref()) {
-            let primary = rule.primary;
-            let key = &self.keys[primary.key_id];
-            let value = match primary.algorithm {
-                CryptoAlgorithm::Encryption => {
-                    let key = key.encryption();
-                    crypto::encryption::encrypt(
-                        cookie.name.as_bytes(),
-                        cookie.value.as_bytes(),
-                        key,
-                    )
-                }
-                CryptoAlgorithm::Signing => {
-                    let key = key.signing();
-                    crypto::signing::sign(cookie.name.as_bytes(), cookie.value.as_ref(), key)
-                }
-            };
+            let value = rule.primary.process_outgoing(&cookie.name, &cookie.value);
             cookie.value = value.into();
         } else {
             // We don't need to percent-encode the value if we're encrypting or signing it.
@@ -141,7 +115,7 @@ impl Processor {
             let value = 'outer: {
                 let mut error = None;
                 for config in configs {
-                    let outcome = process_incoming(config, &self.keys, name, value);
+                    let outcome = config.process_incoming(name, value);
                     match outcome {
                         Ok(value) => {
                             break 'outer value;
@@ -238,35 +212,47 @@ struct Rule {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct CryptoConfig {
-    key_id: usize,
-    algorithm: CryptoAlgorithm,
+enum CryptoConfig {
+    Encryption { key: EncryptionKey },
+    Signing { key: SigningKey },
 }
 
-/// Process a cookie value received from the client, either by verifying it or decrypting it.
-fn process_incoming(
-    config: CryptoConfig,
-    keys: &IndexSet<Key>,
-    name: &str,
-    value: &str,
-) -> Result<String, CryptoError> {
-    let key = &keys[config.key_id];
-    match config.algorithm {
-        CryptoAlgorithm::Encryption => {
-            let key = key.encryption();
-            crypto::encryption::decrypt(name.as_bytes(), value.as_bytes(), key).map_err(|e| {
-                CryptoError {
-                    r#type: CryptoAlgorithm::Encryption,
-                    source: e,
-                }
-            })
+impl CryptoConfig {
+    pub fn new(master_key: &Key, crypto_algorithm: CryptoAlgorithm) -> Self {
+        match crypto_algorithm {
+            CryptoAlgorithm::Encryption => {
+                let key = EncryptionKey::derive(master_key);
+                CryptoConfig::Encryption { key }
+            }
+            CryptoAlgorithm::Signing => {
+                let key = SigningKey::derive(master_key);
+                CryptoConfig::Signing { key }
+            }
         }
-        CryptoAlgorithm::Signing => {
-            let key = key.signing();
-            crypto::signing::verify(name.as_bytes(), value, key).map_err(|e| CryptoError {
+    }
+
+    /// Process a cookie value received from the client, either by verifying it or decrypting it.
+    fn process_incoming(&self, name: &str, value: &str) -> Result<String, CryptoError> {
+        match self {
+            Self::Encryption { key } => {
+                key.decrypt(name.as_bytes(), value.as_bytes())
+                    .map_err(|e| CryptoError {
+                        r#type: CryptoAlgorithm::Encryption,
+                        source: e,
+                    })
+            }
+            Self::Signing { key } => key.verify(name, value).map_err(|e| CryptoError {
                 r#type: CryptoAlgorithm::Signing,
                 source: e,
-            })
+            }),
+        }
+    }
+
+    /// Process a cookie to be sent to the client, either by signing it or encrypting it.
+    fn process_outgoing(&self, name: &str, value: &str) -> String {
+        match self {
+            Self::Encryption { key } => key.encrypt(name.as_bytes(), value.as_bytes()),
+            Self::Signing { key } => key.sign(name, value),
         }
     }
 }

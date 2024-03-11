@@ -20,12 +20,12 @@ serde = ["dep:serde"]
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
 percent-encoding = "2.0"
 subtle = "2.5.0"
+hkdf = "0.12"
 sha2 = "0.10"
 rand = "0.8"
-aes-gcm = "0.10.3"
+aes-gcm-siv = "0.11.1"
 base64 = "0.22.0"
 hmac = "0.12.1"
 thiserror = "1.0.57"
-indexmap = "2.2.5"
 anyhow = "1"
 serde = { version = "1.0.197", features = ["derive"], optional = true }
