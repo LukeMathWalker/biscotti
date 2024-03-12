@@ -179,9 +179,27 @@ impl<'c> RequestCookies<'c> {
     /// Parse a `Cookie` header value into a [`RequestCookies`] map.
     pub fn parse_header(
         header: &'c str,
-        policy: &Processor,
+        processor: &Processor,
     ) -> Result<RequestCookies<'c>, ParseError> {
+        Self::parse_headers(std::iter::once(header), processor)
+    }
+
+    /// Parse multiple `Cookie` header values into a [`RequestCookies`] map.
+    pub fn parse_headers<I>(
+        headers: I,
+        processor: &Processor,
+    ) -> Result<RequestCookies<'c>, ParseError>
+    where
+        I: IntoIterator<Item = &'c str>,
+    {
         let mut cookies = RequestCookies::new();
+        for header in headers {
+            cookies._parse_header(header, processor)?;
+        }
+        Ok(cookies)
+    }
+
+    fn _parse_header(&mut self, header: &'c str, processor: &Processor) -> Result<(), ParseError> {
         for cookie in header.split(';') {
             if cookie.chars().all(char::is_whitespace) {
                 continue;
@@ -196,11 +214,11 @@ impl<'c> RequestCookies<'c> {
                 return Err(ParseError::EmptyName);
             }
 
-            let cookie = policy.process_incoming(name, value)?;
+            let cookie = processor.process_incoming(name, value)?;
 
-            cookies.append(cookie);
+            self.append(cookie);
         }
-        Ok(cookies)
+        Ok(())
     }
 }
 
