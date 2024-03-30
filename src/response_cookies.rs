@@ -59,6 +59,15 @@ pub struct ResponseCookies<'c> {
     cookies: HashMap<ResponseCookieId<'c>, ResponseCookie<'c>>,
 }
 
+impl ResponseCookies<'static> {
+    /// Creates an empty cookie set with a static lifetime.
+    ///
+    /// It's a specialized version of [`ResponseCookies::new()`].
+    pub fn new_static() -> ResponseCookies<'static> {
+        ResponseCookies::default()
+    }
+}
+
 impl<'c> ResponseCookies<'c> {
     /// Creates an empty cookie set.
     ///
