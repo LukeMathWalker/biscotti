@@ -39,6 +39,7 @@ use std::collections::HashMap;
 ///
 /// [`ResponseCookies::header_values`]: crate::ResponseCookies::header_values
 /// [`RequestCookies::parse_header`]: crate::RequestCookies::parse_header
+#[derive(Debug, Clone)]
 pub struct Processor {
     percent_encode: bool,
     rules: HashMap<String, Rule>,
