@@ -6,14 +6,14 @@ use std::collections::HashMap;
 
 #[derive(Default, Debug, Clone)]
 /// A collection of [`RequestCookie`]s attached to an HTTP request using the `Cookie` header.
-pub struct RequestCookies<'c> {
+pub struct RequestCookies<'cookie> {
     /// Invariant: the `Vec` for a given `name` is never empty.
-    cookies: HashMap<Cow<'c, str>, Vec<Cow<'c, str>>>,
+    cookies: HashMap<Cow<'cookie, str>, Vec<Cow<'cookie, str>>>,
 }
 
-impl<'c> RequestCookies<'c> {
+impl<'cookie> RequestCookies<'cookie> {
     /// Creates a new, empty [`RequestCookies`] map.
-    pub fn new() -> RequestCookies<'c> {
+    pub fn new() -> RequestCookies<'cookie> {
         Default::default()
     }
 
@@ -52,7 +52,7 @@ impl<'c> RequestCookies<'c> {
     /// ```
     pub fn append<C>(&mut self, cookie: C) -> bool
     where
-        C: Into<RequestCookie<'c>>,
+        C: Into<RequestCookie<'cookie>>,
     {
         let cookie = cookie.into();
         let RequestCookie { name, value } = cookie;
@@ -98,7 +98,7 @@ impl<'c> RequestCookies<'c> {
     /// ```
     pub fn replace<C>(&mut self, cookie: C) -> bool
     where
-        C: Into<RequestCookie<'c>>,
+        C: Into<RequestCookie<'cookie>>,
     {
         let cookie = cookie.into();
         let RequestCookie { name, value } = cookie;
@@ -132,7 +132,7 @@ impl<'c> RequestCookies<'c> {
     /// assert_eq!(values.next(), Some("value2"));
     /// assert_eq!(values.next(), None);
     /// ```
-    pub fn get(&self, name: &str) -> Option<RequestCookie<'c>> {
+    pub fn get<'map, 'key>(&'map self, name: &'key str) -> Option<RequestCookie<'cookie>> {
         self.cookies.get_key_value(name).map(|(name, v)| {
             let first = v.first().unwrap();
             RequestCookie::new(name.clone(), first.clone())
@@ -166,7 +166,10 @@ impl<'c> RequestCookies<'c> {
     /// assert_eq!(values.next(), Some("value2"));
     /// assert_eq!(values.next(), None);
     /// ```
-    pub fn get_all(&self, name: &str) -> Option<CookiesForName<'_, 'c>> {
+    pub fn get_all<'map, 'key>(
+        &'map self,
+        name: &'key str,
+    ) -> Option<CookiesForName<'map, 'cookie>> {
         self.cookies.get_key_value(name).map(|(name, v)| {
             let iter = v.iter();
             CookiesForName {
@@ -178,9 +181,9 @@ impl<'c> RequestCookies<'c> {
 
     /// Parse a `Cookie` header value into a [`RequestCookies`] map.
     pub fn parse_header(
-        header: &'c str,
+        header: &'cookie str,
         processor: &Processor,
-    ) -> Result<RequestCookies<'c>, ParseError> {
+    ) -> Result<RequestCookies<'cookie>, ParseError> {
         Self::parse_headers(std::iter::once(header), processor)
     }
 
@@ -188,9 +191,9 @@ impl<'c> RequestCookies<'c> {
     pub fn parse_headers<I>(
         headers: I,
         processor: &Processor,
-    ) -> Result<RequestCookies<'c>, ParseError>
+    ) -> Result<RequestCookies<'cookie>, ParseError>
     where
-        I: IntoIterator<Item = &'c str>,
+        I: IntoIterator<Item = &'cookie str>,
     {
         let mut cookies = RequestCookies::new();
         for header in headers {
@@ -199,7 +202,11 @@ impl<'c> RequestCookies<'c> {
         Ok(cookies)
     }
 
-    fn _parse_header(&mut self, header: &'c str, processor: &Processor) -> Result<(), ParseError> {
+    fn _parse_header(
+        &mut self,
+        header: &'cookie str,
+        processor: &Processor,
+    ) -> Result<(), ParseError> {
         for cookie in header.split(';') {
             if cookie.chars().all(char::is_whitespace) {
                 continue;
@@ -240,7 +247,7 @@ mod tests {
     use crate::processor::DecodingError;
     use crate::{
         errors::{ParseError, ProcessIncomingError},
-        Processor, RequestCookies,
+        Processor, RequestCookie, RequestCookies,
     };
 
     /// A helper macro for our testing purposes.
@@ -437,5 +444,16 @@ mod tests {
         for (string, expected) in cases {
             check_case(string, &processor, expected)
         }
+    }
+
+    #[test]
+    fn get_lifetime() {
+        let mut cookies: RequestCookies<'static> = RequestCookies::new();
+        cookies.append(RequestCookie::new("name", "value"));
+
+        // This is a compile-time test to ensure that we can retrieve
+        // cookies using a key with a shorter lifetime than the cookies themselves.
+        let key = "name".to_string();
+        cookies.get(key.as_str());
     }
 }
