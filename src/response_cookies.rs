@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
 
@@ -55,8 +56,23 @@ use crate::{Processor, ResponseCookie, ResponseCookieId};
 ///
 /// [`RemovalCookie`]: crate::RemovalCookie
 #[derive(Default, Debug, Clone)]
-pub struct ResponseCookies<'c> {
-    cookies: HashMap<ResponseCookieId<'c>, ResponseCookie<'c>>,
+pub struct ResponseCookies<'cookie> {
+    cookies: HashMap<ResponseCookieKey<'cookie>, ResponseCookie<'cookie>>,
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+/// This is an (annoying) implementation detail.
+///
+/// It allows users to get and remove entries from [`ResponseCookies`] using
+/// a [`ResponseCookieId`] with a different lifetime than the one used by the set.
+/// In particular, if they are working with a `ResponseCookies<'static>`, they can
+/// use a `ResponseCookieId<'a>` to get and remove entries.
+struct ResponseCookieKey<'a>(ResponseCookieId<'a>);
+
+impl<'a, 'b: 'a> Borrow<ResponseCookieId<'a>> for ResponseCookieKey<'b> {
+    fn borrow(&self) -> &ResponseCookieId<'a> {
+        &self.0
+    }
 }
 
 impl ResponseCookies<'static> {
@@ -68,7 +84,7 @@ impl ResponseCookies<'static> {
     }
 }
 
-impl<'c> ResponseCookies<'c> {
+impl<'cookie> ResponseCookies<'cookie> {
     /// Creates an empty cookie set.
     ///
     /// # Example
@@ -79,7 +95,7 @@ impl<'c> ResponseCookies<'c> {
     /// let set = ResponseCookies::new();
     /// assert_eq!(set.iter().count(), 0);
     /// ```
-    pub fn new() -> ResponseCookies<'c> {
+    pub fn new() -> ResponseCookies<'cookie> {
         ResponseCookies::default()
     }
 
@@ -120,7 +136,10 @@ impl<'c> ResponseCookies<'c> {
     /// // By specifying just the name, the domain and path are assumed to be None.
     /// assert_eq!(set.get("name").map(|c| c.value()), Some("value"));
     /// ```
-    pub fn get<I: Into<ResponseCookieId<'c>>>(&self, id: I) -> Option<&ResponseCookie<'c>> {
+    pub fn get<'map, 'key, Key>(&'map self, id: Key) -> Option<&'map ResponseCookie<'cookie>>
+    where
+        Key: Into<ResponseCookieId<'key>>,
+    {
         let id = id.into();
         self.cookies.get(&id)
     }
@@ -154,9 +173,12 @@ impl<'c> ResponseCookies<'c> {
     /// assert_eq!(set.get(id).map(|c| c.value()), Some("four"));
     /// assert_eq!(set.iter().count(), 3);
     /// ```
-    pub fn insert<C: Into<ResponseCookie<'c>>>(&mut self, cookie: C) -> Option<ResponseCookie<'c>> {
+    pub fn insert<C: Into<ResponseCookie<'cookie>>>(
+        &mut self,
+        cookie: C,
+    ) -> Option<ResponseCookie<'cookie>> {
         let cookie = cookie.into();
-        self.cookies.insert(cookie.id(), cookie)
+        self.cookies.insert(ResponseCookieKey(cookie.id()), cookie)
     }
 
     /// Discard `cookie` from this set.  
@@ -202,8 +224,12 @@ impl<'c> ResponseCookies<'c> {
     /// ```
     ///
     /// [`RemovalCookie`]: crate::RemovalCookie
-    pub fn discard<I: Into<ResponseCookieId<'c>>>(&mut self, id: I) {
-        self.cookies.remove(&id.into());
+    pub fn discard<'key, Key>(&mut self, id: Key)
+    where
+        Key: Into<ResponseCookieId<'key>>,
+    {
+        let id = id.into();
+        self.cookies.remove(&id);
     }
 
     /// Returns an iterator over all the cookies present in this set.
@@ -253,7 +279,7 @@ impl<'a, 'c: 'a> ResponseCookies<'c> {
 
 /// Iterator over all the cookies in a [`ResponseCookies`].
 pub struct Iter<'a, 'c> {
-    cookies: Values<'a, ResponseCookieId<'c>, ResponseCookie<'c>>,
+    cookies: Values<'a, ResponseCookieKey<'c>, ResponseCookie<'c>>,
 }
 
 impl<'a, 'c> Iterator for Iter<'a, 'c> {
@@ -267,9 +293,9 @@ impl<'a, 'c> Iterator for Iter<'a, 'c> {
 #[cfg(test)]
 mod test {
     use super::ResponseCookies;
+    use crate::ResponseCookie;
 
     #[test]
-    #[allow(deprecated)]
     fn simple() {
         let mut c = ResponseCookies::new();
 
@@ -287,6 +313,42 @@ mod test {
         assert!(c.get("test").is_none());
         assert!(c.get("test2").is_none());
         assert!(c.get("test3").is_none());
+    }
+
+    #[test]
+    fn get_lifetime() {
+        // The lifetime of the key is decoupled from the lifetime of the returned value.
+        fn get<'a, 'b>(
+            c: &'a ResponseCookies<'static>,
+            key: &'b str,
+        ) -> Option<&'a ResponseCookie<'static>> {
+            c.get(key)
+        }
+
+        let mut c = ResponseCookies::new_static();
+        c.insert(("test", ""));
+
+        let key = "test".to_string();
+        // Can get the cookie using a key with a lifetime shorter than 'static
+        // but as long as the lifetime of the map itself.
+        c.get(key.as_str());
+
+        {
+            let key = "test".to_string();
+            // Can get the cookie using a key with a lifetime shorter than
+            // the lifetime of the map itself.
+            get(&c, key.as_str());
+        }
+    }
+
+    #[test]
+    fn discard_lifetime() {
+        let mut c = ResponseCookies::new_static();
+        c.insert(("test", ""));
+
+        let key = "test".to_string();
+        // Can discard the cookie using a key with a lifetime shorter than 'static.
+        c.discard(key.as_str());
     }
 
     #[test]
