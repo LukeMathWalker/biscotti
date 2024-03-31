@@ -106,6 +106,7 @@ mod response_cookies;
 mod same_site;
 
 pub mod request;
+pub mod response;
 
 pub use crate::expiration::*;
 pub use crate::same_site::*;

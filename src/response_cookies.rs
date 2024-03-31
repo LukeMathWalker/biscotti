@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
-use std::collections::hash_map::Values;
 use std::collections::HashMap;
 
+use crate::response::ResponseCookiesIter;
 use crate::{Processor, ResponseCookie, ResponseCookieId};
 
 /// A collection of [`ResponseCookie`]s to be attached to an HTTP response
@@ -67,7 +67,7 @@ pub struct ResponseCookies<'cookie> {
 /// a [`ResponseCookieId`] with a different lifetime than the one used by the set.
 /// In particular, if they are working with a `ResponseCookies<'static>`, they can
 /// use a `ResponseCookieId<'a>` to get and remove entries.
-struct ResponseCookieKey<'a>(ResponseCookieId<'a>);
+pub(crate) struct ResponseCookieKey<'a>(ResponseCookieId<'a>);
 
 impl<'a, 'b: 'a> Borrow<ResponseCookieId<'a>> for ResponseCookieKey<'b> {
     fn borrow(&self) -> &ResponseCookieId<'a> {
@@ -261,8 +261,8 @@ impl<'cookie> ResponseCookies<'cookie> {
     ///     }
     /// }
     /// ```
-    pub fn iter(&self) -> Iter {
-        Iter {
+    pub fn iter(&self) -> ResponseCookiesIter {
+        ResponseCookiesIter {
             cookies: self.cookies.values(),
         }
     }
@@ -274,19 +274,6 @@ impl<'a, 'c: 'a> ResponseCookies<'c> {
         self.cookies
             .into_values()
             .map(|cookie| processor.process_outgoing(cookie).to_string())
-    }
-}
-
-/// Iterator over all the cookies in a [`ResponseCookies`].
-pub struct Iter<'a, 'c> {
-    cookies: Values<'a, ResponseCookieKey<'c>, ResponseCookie<'c>>,
-}
-
-impl<'a, 'c> Iterator for Iter<'a, 'c> {
-    type Item = &'a ResponseCookie<'c>;
-
-    fn next(&mut self) -> Option<&'a ResponseCookie<'c>> {
-        self.cookies.next()
     }
 }
 
