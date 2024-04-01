@@ -123,13 +123,8 @@ impl Key {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum KeyError {
-    /// Too few bytes were provided to generate a key.
-    ///
-    /// See [`Key::from()`] for minimum requirements.
-    TooShort {
-        /// The number of bytes provided.
-        length: usize,
-    },
+    /// See [`ShortKeyError`].
+    TooShort(ShortKeyError),
 }
 
 impl std::error::Error for KeyError {}
@@ -137,16 +132,32 @@ impl std::error::Error for KeyError {}
 impl std::fmt::Display for KeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KeyError::TooShort { length: n } => {
-                write!(
-                    f,
-                    "key material is too short: expected >= {} bytes, got {} bytes",
-                    MINIMUM_KEY_LENGTH, n
-                )
+            KeyError::TooShort(e) => {
+                write!(f, "{e}")
             }
         }
     }
 }
+
+#[derive(Debug)]
+/// The key generation algorithm requires more bytes than what was provided.
+///
+/// See [`Key::from()`] for minimum requirements.
+pub struct ShortKeyError {
+    length: usize,
+}
+
+impl std::fmt::Display for ShortKeyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "key material is too short: expected >= {} bytes, got {} bytes",
+            MINIMUM_KEY_LENGTH, self.length
+        )
+    }
+}
+
+impl std::error::Error for ShortKeyError {}
 
 impl TryFrom<&[u8]> for Key {
     type Error = KeyError;

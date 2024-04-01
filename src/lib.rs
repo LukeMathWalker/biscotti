@@ -122,7 +122,7 @@ pub use time;
 
 /// Errors that can occur when using `biscotti`.
 pub mod errors {
-    pub use crate::crypto::KeyError;
+    pub use crate::crypto::{KeyError, ShortKeyError};
     pub use crate::processor::{CryptoError, DecodingError, ProcessIncomingError};
     pub use crate::request_cookies::ParseError;
 }
