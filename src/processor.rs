@@ -164,14 +164,42 @@ impl Processor {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 #[non_exhaustive]
 /// The error returned by [`Processor::process_incoming`].
 pub enum ProcessIncomingError {
-    #[error(transparent)]
-    Crypto(#[from] CryptoError),
-    #[error(transparent)]
-    Decoding(#[from] DecodingError),
+    Crypto(CryptoError),
+    Decoding(DecodingError),
+}
+
+impl std::fmt::Display for ProcessIncomingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProcessIncomingError::Crypto(e) => e.fmt(f),
+            ProcessIncomingError::Decoding(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ProcessIncomingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ProcessIncomingError::Crypto(e) => Some(e),
+            ProcessIncomingError::Decoding(e) => Some(e),
+        }
+    }
+}
+
+impl From<CryptoError> for ProcessIncomingError {
+    fn from(value: CryptoError) -> Self {
+        ProcessIncomingError::Crypto(value)
+    }
+}
+
+impl From<DecodingError> for ProcessIncomingError {
+    fn from(value: DecodingError) -> Self {
+        ProcessIncomingError::Decoding(value)
+    }
 }
 
 #[derive(Debug)]
