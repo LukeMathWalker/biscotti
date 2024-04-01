@@ -187,22 +187,8 @@ impl<'cookie> RequestCookies<'cookie> {
         Self::parse_headers(std::iter::once(header), processor)
     }
 
-    /// Parse multiple `Cookie` header values into a [`RequestCookies`] map.
-    pub fn parse_headers<I>(
-        headers: I,
-        processor: &Processor,
-    ) -> Result<RequestCookies<'cookie>, ParseError>
-    where
-        I: IntoIterator<Item = &'cookie str>,
-    {
-        let mut cookies = RequestCookies::new();
-        for header in headers {
-            cookies._parse_header(header, processor)?;
-        }
-        Ok(cookies)
-    }
-
-    fn _parse_header(
+    /// Parse a `Cookie` header value and append its value to the existing [`RequestCookies`] map.
+    pub fn extend_from_header(
         &mut self,
         header: &'cookie str,
         processor: &Processor,
@@ -226,6 +212,21 @@ impl<'cookie> RequestCookies<'cookie> {
             self.append(cookie);
         }
         Ok(())
+    }
+
+    /// Parse multiple `Cookie` header values into a [`RequestCookies`] map.
+    pub fn parse_headers<I>(
+        headers: I,
+        processor: &Processor,
+    ) -> Result<RequestCookies<'cookie>, ParseError>
+    where
+        I: IntoIterator<Item = &'cookie str>,
+    {
+        let mut cookies = RequestCookies::new();
+        for header in headers {
+            cookies.extend_from_header(header, processor)?;
+        }
+        Ok(cookies)
     }
 }
 
