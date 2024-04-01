@@ -1,8 +1,8 @@
-use crate::config::Config;
 use crate::crypto::encryption::EncryptionKey;
 use crate::crypto::signing::SigningKey;
 use crate::crypto::Key;
 use crate::encoding::encode;
+use crate::ProcessorConfig;
 use crate::{config, RequestCookie, ResponseCookie};
 use anyhow::Context;
 use percent_encoding::percent_decode;
@@ -15,10 +15,10 @@ use std::collections::HashMap;
 /// A processor is created from a [`Config`] using the [`From`] trait.
 ///
 /// ```rust
-/// use biscotti::{Processor, Key};
-/// use biscotti::config::{Config, CryptoRule, CryptoAlgorithm};
+/// use biscotti::{Processor, ProcessorConfig, Key};
+/// use biscotti::config::{CryptoRule, CryptoAlgorithm};
 ///
-/// let mut config = Config::default();
+/// let mut config = ProcessorConfig::default();
 /// config.crypto_rules.push(CryptoRule {
 ///     cookie_names: vec!["session".to_string()],
 ///     algorithm: CryptoAlgorithm::Encryption,
@@ -45,8 +45,8 @@ pub struct Processor {
     rules: HashMap<String, Rule>,
 }
 
-impl From<Config> for Processor {
-    fn from(value: Config) -> Self {
+impl From<ProcessorConfig> for Processor {
+    fn from(value: ProcessorConfig) -> Self {
         let mut processor = Processor {
             percent_encode: value.percent_encode,
             rules: HashMap::new(),
@@ -284,15 +284,15 @@ impl From<config::CryptoAlgorithm> for CryptoAlgorithm {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{Config, CryptoAlgorithm, CryptoRule, FallbackConfig};
+    use crate::config::{CryptoAlgorithm, CryptoRule, FallbackConfig};
     use crate::encoding::encode;
-    use crate::{Key, Processor, RequestCookies, ResponseCookie};
+    use crate::{Key, Processor, ProcessorConfig, RequestCookies, ResponseCookie};
 
     #[test]
     fn roundtrip_encryption() {
         let name = "encrypted";
         let unencrypted_value = "tamper-proof";
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Encryption,
@@ -327,7 +327,7 @@ mod tests {
     fn roundtrip_signing() {
         let name = "signed";
         let value = "tamper-proof";
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Signing,
@@ -357,7 +357,7 @@ mod tests {
     fn roundtrip_encoded() {
         let name = "to be encoded";
         let value = "a bunch of % very special ! # characters ;";
-        let processor: Processor = Config::default().into();
+        let processor: Processor = ProcessorConfig::default().into();
 
         let cookie = ResponseCookie::new(name, value);
         let encoded_cookie = processor.process_outgoing(cookie);
@@ -381,7 +381,7 @@ mod tests {
         let value = "a-value-that-should-be-signed-but-is-not";
         let header = format!("{name}={value}");
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Signing,
@@ -402,7 +402,7 @@ mod tests {
         let value = "a-value-that-should-be-encrypted-but-is-not";
         let header = format!("{name}={value}");
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Encryption,
@@ -441,7 +441,7 @@ mod tests {
         ];
         let fallback = fallbacks[1].clone();
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: fallback.algorithm,
@@ -457,7 +457,7 @@ mod tests {
         assert_ne!(secured_cookie.value(), value);
 
         let header = format!("{}={}", secured_cookie.name(), secured_cookie.value());
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Signing,
@@ -499,7 +499,7 @@ mod tests {
         ];
         let fallback = fallbacks[1].clone();
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: fallback.algorithm,
@@ -515,7 +515,7 @@ mod tests {
         assert_ne!(secured_cookie.value(), value);
 
         let header = format!("{}={}", secured_cookie.name(), secured_cookie.value());
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Encryption,

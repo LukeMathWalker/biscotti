@@ -242,9 +242,9 @@ pub enum ParseError {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::Config;
     use crate::errors::ParseError::{EmptyName, MissingPair};
     use crate::processor::DecodingError;
+    use crate::ProcessorConfig;
     use crate::{
         errors::{ParseError, ProcessIncomingError},
         Processor, RequestCookie, RequestCookies,
@@ -365,7 +365,7 @@ mod tests {
             ("yo", Err(MissingPair)),
         ];
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             percent_encode: false,
             crypto_rules: vec![],
             ..Default::default()
@@ -434,7 +434,7 @@ mod tests {
             ),
         ];
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             percent_encode: true,
             crypto_rules: vec![],
             ..Default::default()
