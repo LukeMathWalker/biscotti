@@ -1,24 +1,24 @@
-use crate::config::Config;
 use crate::crypto::encryption::EncryptionKey;
 use crate::crypto::signing::SigningKey;
 use crate::crypto::Key;
 use crate::encoding::encode;
+use crate::ProcessorConfig;
 use crate::{config, RequestCookie, ResponseCookie};
-use anyhow::Context;
 use percent_encoding::percent_decode;
 use std::collections::HashMap;
+use std::str::Utf8Error;
 
 /// Transforms cookies before they are sent to the client, or after they have been parsed from an incoming request.
 ///
 /// # Creating a `Processor`
 ///
-/// A processor is created from a [`Config`] using the [`From`] trait.
+/// A processor is created from a [`ProcessorConfig`] using the [`From`] trait.
 ///
 /// ```rust
-/// use biscotti::{Processor, Key};
-/// use biscotti::config::{Config, CryptoRule, CryptoAlgorithm};
+/// use biscotti::{Processor, ProcessorConfig, Key};
+/// use biscotti::config::{CryptoRule, CryptoAlgorithm};
 ///
-/// let mut config = Config::default();
+/// let mut config = ProcessorConfig::default();
 /// config.crypto_rules.push(CryptoRule {
 ///     cookie_names: vec!["session".to_string()],
 ///     algorithm: CryptoAlgorithm::Encryption,
@@ -45,8 +45,8 @@ pub struct Processor {
     rules: HashMap<String, Rule>,
 }
 
-impl From<Config> for Processor {
-    fn from(value: Config) -> Self {
+impl From<ProcessorConfig> for Processor {
+    fn from(value: ProcessorConfig) -> Self {
         let mut processor = Processor {
             percent_encode: value.percent_encode,
             rules: HashMap::new(),
@@ -137,26 +137,25 @@ impl Processor {
             decode_value = true;
         }
         if self.percent_encode {
-            cookie.name = percent_decode(name.as_bytes())
-                .decode_utf8()
-                .context("Failed to percent-decode the cookie name")
-                .map_err(|e| DecodingError {
-                    source: e,
-                    raw_value: name.to_string(),
-                })?;
+            cookie.name =
+                percent_decode(name.as_bytes())
+                    .decode_utf8()
+                    .map_err(|e| DecodingError {
+                        invalid_part: InvalidCookiePart::Name {
+                            raw_value: name.to_string(),
+                        },
+                        source: e,
+                    })?;
         }
 
         if self.percent_encode && decode_value {
             cookie.value = percent_decode(value.as_bytes())
                 .decode_utf8()
-                .with_context(|| {
-                    format!(
-                        "Failed to percent-decode the value of the cookie named '{}'",
-                        cookie.name
-                    )
-                })
                 .map_err(|e| DecodingError {
-                    raw_value: value.to_string(),
+                    invalid_part: InvalidCookiePart::Value {
+                        cookie_name: cookie.name.clone().into_owned(),
+                        raw_value: value.to_string(),
+                    },
                     source: e,
                 })?;
         }
@@ -165,35 +164,52 @@ impl Processor {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 #[non_exhaustive]
 /// The error returned by [`Processor::process_incoming`].
 pub enum ProcessIncomingError {
-    #[error(transparent)]
-    Crypto(#[from] CryptoError),
-    #[error(transparent)]
-    Decoding(#[from] DecodingError),
+    Crypto(CryptoError),
+    Decoding(DecodingError),
 }
 
-#[derive(Debug, thiserror::Error)]
+impl std::fmt::Display for ProcessIncomingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProcessIncomingError::Crypto(e) => e.fmt(f),
+            ProcessIncomingError::Decoding(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ProcessIncomingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ProcessIncomingError::Crypto(e) => Some(e),
+            ProcessIncomingError::Decoding(e) => Some(e),
+        }
+    }
+}
+
+impl From<CryptoError> for ProcessIncomingError {
+    fn from(value: CryptoError) -> Self {
+        ProcessIncomingError::Crypto(value)
+    }
+}
+
+impl From<DecodingError> for ProcessIncomingError {
+    fn from(value: DecodingError) -> Self {
+        ProcessIncomingError::Decoding(value)
+    }
+}
+
+#[derive(Debug)]
 /// An error that occurred while decrypting or verifying an incoming request cookie.
 ///
 /// This error is returned by [`Processor::process_incoming`].
 pub struct CryptoError {
+    name: String,
     r#type: CryptoAlgorithm,
-    #[source]
     source: anyhow::Error,
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("{source}")]
-/// An error that occurred while decoding a percent-encoded cookie name or value.
-///
-/// This error is returned by [`Processor::process_incoming`].
-pub struct DecodingError {
-    pub(crate) raw_value: String,
-    #[source]
-    pub(crate) source: anyhow::Error,
 }
 
 impl std::fmt::Display for CryptoError {
@@ -202,8 +218,62 @@ impl std::fmt::Display for CryptoError {
             CryptoAlgorithm::Encryption => "an encrypted",
             CryptoAlgorithm::Signing => "a signed",
         };
-        write!(f, "Failed to process {t} request cookie")
+        write!(f, "Failed to process `{}` as {t} request cookie", self.name)
     }
+}
+
+impl std::error::Error for CryptoError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+#[derive(Debug)]
+/// An error that occurred while decoding a percent-encoded cookie name or value.
+///
+/// This error is returned by [`Processor::process_incoming`].
+pub struct DecodingError {
+    invalid_part: InvalidCookiePart,
+    source: Utf8Error,
+}
+
+impl std::fmt::Display for DecodingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.invalid_part {
+            InvalidCookiePart::Name { raw_value } => {
+                write!(
+                    f,
+                    "Failed to percent-decode the name of a cookie: `{raw_value}`",
+                )
+            }
+            InvalidCookiePart::Value {
+                cookie_name,
+                raw_value,
+            } => {
+                write!(
+                    f,
+                    "Failed to percent-decode the value of the `{cookie_name}` cookie: `{raw_value}`",
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for DecodingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum InvalidCookiePart {
+    Name {
+        raw_value: String,
+    },
+    Value {
+        cookie_name: String,
+        raw_value: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -238,11 +308,13 @@ impl CryptoConfig {
             Self::Encryption { key } => {
                 key.decrypt(name.as_bytes(), value.as_bytes())
                     .map_err(|e| CryptoError {
+                        name: name.to_owned(),
                         r#type: CryptoAlgorithm::Encryption,
                         source: e,
                     })
             }
             Self::Signing { key } => key.verify(name, value).map_err(|e| CryptoError {
+                name: name.to_owned(),
                 r#type: CryptoAlgorithm::Signing,
                 source: e,
             }),
@@ -284,15 +356,16 @@ impl From<config::CryptoAlgorithm> for CryptoAlgorithm {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{Config, CryptoAlgorithm, CryptoRule, FallbackConfig};
+    use crate::config::{CryptoAlgorithm, CryptoRule, FallbackConfig};
     use crate::encoding::encode;
-    use crate::{Key, Processor, RequestCookies, ResponseCookie};
+    use crate::{Key, Processor, ProcessorConfig, RequestCookies, ResponseCookie};
+    use std::error::Error;
 
     #[test]
     fn roundtrip_encryption() {
         let name = "encrypted";
         let unencrypted_value = "tamper-proof";
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Encryption,
@@ -327,7 +400,7 @@ mod tests {
     fn roundtrip_signing() {
         let name = "signed";
         let value = "tamper-proof";
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Signing,
@@ -357,7 +430,7 @@ mod tests {
     fn roundtrip_encoded() {
         let name = "to be encoded";
         let value = "a bunch of % very special ! # characters ;";
-        let processor: Processor = Config::default().into();
+        let processor: Processor = ProcessorConfig::default().into();
 
         let cookie = ResponseCookie::new(name, value);
         let encoded_cookie = processor.process_outgoing(cookie);
@@ -381,7 +454,7 @@ mod tests {
         let value = "a-value-that-should-be-signed-but-is-not";
         let header = format!("{name}={value}");
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Signing,
@@ -393,7 +466,14 @@ mod tests {
         .into();
         let err = RequestCookies::parse_header(&header, &processor)
             .expect_err("A non-signed cookie passed verification, bad!");
-        assert_eq!(err.to_string(), "Failed to process a signed request cookie");
+        assert_eq!(
+            err.to_string(),
+            "Failed to parse cookies out of a header value"
+        );
+        assert_eq!(
+            err.source().unwrap().to_string(),
+            "Failed to process `session` as a signed request cookie"
+        );
     }
 
     #[test]
@@ -402,7 +482,7 @@ mod tests {
         let value = "a-value-that-should-be-encrypted-but-is-not";
         let header = format!("{name}={value}");
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Encryption,
@@ -416,7 +496,11 @@ mod tests {
             .expect_err("A non-encrypted cookie passed, bad!");
         assert_eq!(
             err.to_string(),
-            "Failed to process an encrypted request cookie"
+            "Failed to parse cookies out of a header value"
+        );
+        assert_eq!(
+            err.source().unwrap().to_string(),
+            "Failed to process `session` as an encrypted request cookie"
         );
     }
 
@@ -441,7 +525,7 @@ mod tests {
         ];
         let fallback = fallbacks[1].clone();
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: fallback.algorithm,
@@ -457,7 +541,7 @@ mod tests {
         assert_ne!(secured_cookie.value(), value);
 
         let header = format!("{}={}", secured_cookie.name(), secured_cookie.value());
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Signing,
@@ -499,7 +583,7 @@ mod tests {
         ];
         let fallback = fallbacks[1].clone();
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: fallback.algorithm,
@@ -515,7 +599,7 @@ mod tests {
         assert_ne!(secured_cookie.value(), value);
 
         let header = format!("{}={}", secured_cookie.name(), secured_cookie.value());
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             crypto_rules: vec![CryptoRule {
                 cookie_names: vec![name.to_string()],
                 algorithm: CryptoAlgorithm::Encryption,

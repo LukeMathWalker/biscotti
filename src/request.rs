@@ -10,21 +10,21 @@ use std::slice::Iter;
 /// This struct is created by the [`RequestCookies::get_all()`] method.
 ///
 /// [`RequestCookies::get_all()`]: crate::RequestCookies::get_all
-pub struct CookiesForName<'a, 'c> {
-    pub(crate) iter: Iter<'a, Cow<'c, str>>,
-    pub(crate) name: Cow<'c, str>,
+pub struct CookiesForName<'map, 'cookie> {
+    pub(crate) iter: Iter<'map, Cow<'cookie, str>>,
+    pub(crate) name: Cow<'cookie, str>,
 }
 
-impl<'a, 'c> CookiesForName<'a, 'c> {
-    pub fn values(&self) -> CookieValuesForName<'a, 'c> {
+impl<'map, 'cookie> CookiesForName<'map, 'cookie> {
+    pub fn values(&self) -> CookieValuesForName<'map, 'cookie> {
         CookieValuesForName {
             iter: self.iter.clone(),
         }
     }
 }
 
-impl<'a, 'c> Iterator for CookiesForName<'a, 'c> {
-    type Item = RequestCookie<'c>;
+impl<'map, 'cookie> Iterator for CookiesForName<'map, 'cookie> {
+    type Item = RequestCookie<'cookie>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter
@@ -40,12 +40,12 @@ impl<'a, 'c> Iterator for CookiesForName<'a, 'c> {
 /// An iterator over all cookie values for a given cookie name.
 ///
 /// This struct is created by the [`CookiesForName::values()`] method.
-pub struct CookieValuesForName<'a, 'c> {
-    pub(crate) iter: Iter<'a, Cow<'c, str>>,
+pub struct CookieValuesForName<'map, 'cookie> {
+    pub(crate) iter: Iter<'map, Cow<'cookie, str>>,
 }
 
-impl<'a, 'c> Iterator for CookieValuesForName<'a, 'c> {
-    type Item = &'a str;
+impl<'map, 'cookie> Iterator for CookieValuesForName<'map, 'cookie> {
+    type Item = &'map str;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|value| value.as_ref())
@@ -56,11 +56,11 @@ impl<'a, 'c> Iterator for CookieValuesForName<'a, 'c> {
     }
 }
 
-impl<'a, 'c> ExactSizeIterator for CookiesForName<'a, 'c> {}
+impl<'map, 'cookie> ExactSizeIterator for CookiesForName<'map, 'cookie> {}
 
-impl<'a, 'c> ExactSizeIterator for CookieValuesForName<'a, 'c> {}
+impl<'map, 'cookie> ExactSizeIterator for CookieValuesForName<'map, 'cookie> {}
 
-impl<'a, 'c> DoubleEndedIterator for CookiesForName<'a, 'c> {
+impl<'map, 'cookie> DoubleEndedIterator for CookiesForName<'map, 'cookie> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.iter
             .next_back()
@@ -68,12 +68,12 @@ impl<'a, 'c> DoubleEndedIterator for CookiesForName<'a, 'c> {
     }
 }
 
-impl<'a, 'c> DoubleEndedIterator for CookieValuesForName<'a, 'c> {
+impl<'map, 'cookie> DoubleEndedIterator for CookieValuesForName<'map, 'cookie> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.iter.next_back().map(|value| value.as_ref())
     }
 }
 
-impl<'a, 'c> std::iter::FusedIterator for CookiesForName<'a, 'c> {}
+impl<'map, 'cookie> std::iter::FusedIterator for CookiesForName<'map, 'cookie> {}
 
-impl<'a, 'c> std::iter::FusedIterator for CookieValuesForName<'a, 'c> {}
+impl<'map, 'cookie> std::iter::FusedIterator for CookieValuesForName<'map, 'cookie> {}

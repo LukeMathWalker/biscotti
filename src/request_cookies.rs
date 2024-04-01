@@ -1,19 +1,21 @@
-use crate::processor::{ProcessIncomingError, Processor};
-use crate::request::CookiesForName;
-use crate::RequestCookie;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+use crate::errors::{CryptoError, DecodingError};
+use crate::processor::{ProcessIncomingError, Processor};
+use crate::request::CookiesForName;
+use crate::RequestCookie;
+
 #[derive(Default, Debug, Clone)]
 /// A collection of [`RequestCookie`]s attached to an HTTP request using the `Cookie` header.
-pub struct RequestCookies<'c> {
+pub struct RequestCookies<'cookie> {
     /// Invariant: the `Vec` for a given `name` is never empty.
-    cookies: HashMap<Cow<'c, str>, Vec<Cow<'c, str>>>,
+    cookies: HashMap<Cow<'cookie, str>, Vec<Cow<'cookie, str>>>,
 }
 
-impl<'c> RequestCookies<'c> {
+impl<'cookie> RequestCookies<'cookie> {
     /// Creates a new, empty [`RequestCookies`] map.
-    pub fn new() -> RequestCookies<'c> {
+    pub fn new() -> RequestCookies<'cookie> {
         Default::default()
     }
 
@@ -52,7 +54,7 @@ impl<'c> RequestCookies<'c> {
     /// ```
     pub fn append<C>(&mut self, cookie: C) -> bool
     where
-        C: Into<RequestCookie<'c>>,
+        C: Into<RequestCookie<'cookie>>,
     {
         let cookie = cookie.into();
         let RequestCookie { name, value } = cookie;
@@ -98,7 +100,7 @@ impl<'c> RequestCookies<'c> {
     /// ```
     pub fn replace<C>(&mut self, cookie: C) -> bool
     where
-        C: Into<RequestCookie<'c>>,
+        C: Into<RequestCookie<'cookie>>,
     {
         let cookie = cookie.into();
         let RequestCookie { name, value } = cookie;
@@ -132,7 +134,7 @@ impl<'c> RequestCookies<'c> {
     /// assert_eq!(values.next(), Some("value2"));
     /// assert_eq!(values.next(), None);
     /// ```
-    pub fn get(&self, name: &str) -> Option<RequestCookie<'c>> {
+    pub fn get<'map, 'key>(&'map self, name: &'key str) -> Option<RequestCookie<'cookie>> {
         self.cookies.get_key_value(name).map(|(name, v)| {
             let first = v.first().unwrap();
             RequestCookie::new(name.clone(), first.clone())
@@ -166,7 +168,10 @@ impl<'c> RequestCookies<'c> {
     /// assert_eq!(values.next(), Some("value2"));
     /// assert_eq!(values.next(), None);
     /// ```
-    pub fn get_all(&self, name: &str) -> Option<CookiesForName<'_, 'c>> {
+    pub fn get_all<'map, 'key>(
+        &'map self,
+        name: &'key str,
+    ) -> Option<CookiesForName<'map, 'cookie>> {
         self.cookies.get_key_value(name).map(|(name, v)| {
             let iter = v.iter();
             CookiesForName {
@@ -178,28 +183,18 @@ impl<'c> RequestCookies<'c> {
 
     /// Parse a `Cookie` header value into a [`RequestCookies`] map.
     pub fn parse_header(
-        header: &'c str,
+        header: &'cookie str,
         processor: &Processor,
-    ) -> Result<RequestCookies<'c>, ParseError> {
+    ) -> Result<RequestCookies<'cookie>, ParseError> {
         Self::parse_headers(std::iter::once(header), processor)
     }
 
-    /// Parse multiple `Cookie` header values into a [`RequestCookies`] map.
-    pub fn parse_headers<I>(
-        headers: I,
+    /// Parse a `Cookie` header value and append its value to the existing [`RequestCookies`] map.
+    pub fn extend_from_header(
+        &mut self,
+        header: &'cookie str,
         processor: &Processor,
-    ) -> Result<RequestCookies<'c>, ParseError>
-    where
-        I: IntoIterator<Item = &'c str>,
-    {
-        let mut cookies = RequestCookies::new();
-        for header in headers {
-            cookies._parse_header(header, processor)?;
-        }
-        Ok(cookies)
-    }
-
-    fn _parse_header(&mut self, header: &'c str, processor: &Processor) -> Result<(), ParseError> {
+    ) -> Result<(), ParseError> {
         for cookie in header.split(';') {
             if cookie.chars().all(char::is_whitespace) {
                 continue;
@@ -207,41 +202,126 @@ impl<'c> RequestCookies<'c> {
 
             let (name, value) = match cookie.split_once('=') {
                 Some((name, value)) => (name.trim(), value.trim()),
-                None => return Err(ParseError::MissingPair),
+                None => {
+                    let e = MissingPairError {
+                        fragment: cookie.to_string(),
+                    };
+                    return Err(ParseError::MissingPair(e));
+                }
             };
 
             if name.is_empty() {
-                return Err(ParseError::EmptyName);
+                let e = EmptyNameError {
+                    value: value.to_string(),
+                };
+                return Err(ParseError::EmptyName(e));
             }
 
-            let cookie = processor.process_incoming(name, value)?;
+            let cookie = match processor.process_incoming(name, value) {
+                Ok(c) => c,
+                Err(e) => {
+                    return match e {
+                        ProcessIncomingError::Crypto(e) => Err(ParseError::Crypto(e)),
+                        ProcessIncomingError::Decoding(e) => Err(ParseError::Decoding(e)),
+                    }
+                }
+            };
 
             self.append(cookie);
         }
         Ok(())
     }
+
+    /// Parse multiple `Cookie` header values into a [`RequestCookies`] map.
+    pub fn parse_headers<I>(
+        headers: I,
+        processor: &Processor,
+    ) -> Result<RequestCookies<'cookie>, ParseError>
+    where
+        I: IntoIterator<Item = &'cookie str>,
+    {
+        let mut cookies = RequestCookies::new();
+        for header in headers {
+            cookies.extend_from_header(header, processor)?;
+        }
+        Ok(cookies)
+    }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
+#[non_exhaustive]
 /// The error returned by [`RequestCookies::parse_header()`].
 pub enum ParseError {
-    #[error("Expected a name-value pair, but no `=` was found")]
-    MissingPair,
-    #[error("Cookie name is empty")]
-    EmptyName,
-    #[error(transparent)]
-    ProcessingError(#[from] ProcessIncomingError),
+    MissingPair(MissingPairError),
+    EmptyName(EmptyNameError),
+    Crypto(CryptoError),
+    Decoding(DecodingError),
 }
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Failed to parse cookies out of a header value")
+    }
+}
+
+impl std::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ParseError::MissingPair(e) => Some(e),
+            ParseError::EmptyName(e) => Some(e),
+            ParseError::Crypto(e) => Some(e),
+            ParseError::Decoding(e) => Some(e),
+        }
+    }
+}
+
+#[derive(Debug)]
+/// An error that occurs when parsing a fragment of a `Cookie` header value
+/// that doesn't contain a name-value separator (`=`).
+pub struct MissingPairError {
+    fragment: String,
+}
+
+impl std::fmt::Display for MissingPairError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Expected a name-value pair, but no `=` was found in `{}`",
+            self.fragment
+        )
+    }
+}
+
+impl std::error::Error for MissingPairError {}
+
+#[derive(Debug)]
+/// An error that occurs when parsing a fragment of a `Cookie` header value
+/// that contains an empty name (e.g. `=value`).
+pub struct EmptyNameError {
+    value: String,
+}
+
+impl std::fmt::Display for EmptyNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The name of a cookie cannot be empty, but found an empty name with `{}` as value",
+            self.value
+        )
+    }
+}
+
+impl std::error::Error for EmptyNameError {}
 
 #[cfg(test)]
 mod tests {
-    use crate::config::Config;
-    use crate::errors::ParseError::{EmptyName, MissingPair};
-    use crate::processor::DecodingError;
-    use crate::{
-        errors::{ParseError, ProcessIncomingError},
-        Processor, RequestCookies,
-    };
+    use std::error::Error;
+
+    use googletest::matcher::{Matcher, MatcherResult};
+    use googletest::prelude::{displays_as, eq};
+
+    use crate::ProcessorConfig;
+    use crate::{Processor, RequestCookie, RequestCookies};
 
     /// A helper macro for our testing purposes.
     ///
@@ -275,12 +355,13 @@ mod tests {
     }
 
     #[track_caller]
-    fn check_case(
-        string: &str,
+    fn check_case<'a>(
+        string: &'a str,
         processor: &Processor,
-        expected: Result<RequestCookies, ParseError>,
+        expected: Result<RequestCookies<'a>, Box<dyn Matcher<ActualT = String>>>,
     ) {
-        match RequestCookies::parse_header(string, processor) {
+        let actual = RequestCookies::parse_header(string, processor);
+        match &actual {
             Ok(actual) => {
                 let expected =
                     expected.unwrap_or_else(|_| panic!("Expected a success for {string}"));
@@ -293,20 +374,17 @@ mod tests {
                     assert_eq!(values, value, "Failed for string: {string}");
                 }
             }
-            Err(e) => {
-                let expected = expected.expect_err(&format!("Expected an error for {string}"));
-                use ParseError::*;
-                match (e, expected) {
-                    (EmptyName, EmptyName)
-                    | (MissingPair, MissingPair)
-                    | (ProcessingError(_), ProcessingError(_)) => {}
-                    (actual, expected) => {
-                        panic!(
-                            "Expected {:?}, but got {:?} for {}",
-                            expected, actual, string
-                        );
-                    }
-                }
+            Err(err) => {
+                let source = err.source().unwrap().to_string();
+                let matcher = expected.expect_err(&format!("Expected an error for {string}"));
+                let error = format!(
+                    "Expected: {}\n\
+                    Actual: {err},\n\
+                    {}\n",
+                    matcher.describe(MatcherResult::Match),
+                    matcher.explain_match(&source)
+                );
+                assert!(matcher.matches(&source).is_match(), "{error}");
             }
         }
     }
@@ -352,13 +430,13 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(EmptyName)),
-            ("yo", Err(MissingPair)),
+            (";a=1 ;  ; =v ; c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            ("yo", Err(err_str("Expected a name-value pair, but no `=` was found in `yo`"))),
         ];
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             percent_encode: false,
             crypto_rules: vec![],
             ..Default::default()
@@ -368,6 +446,14 @@ mod tests {
         for (string, expected) in cases {
             check_case(string, &processor, expected)
         }
+    }
+
+    fn boxed<T>(matcher: impl Matcher<ActualT = T> + 'static) -> Box<dyn Matcher<ActualT = T>> {
+        Box::new(matcher)
+    }
+
+    fn err_str(s: &'static str) -> Box<dyn Matcher<ActualT = String>> {
+        boxed(displays_as(eq(s)))
     }
 
     #[test]
@@ -411,23 +497,20 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(EmptyName)),
-            ("yo", Err(MissingPair)),
+            (";a=1 ;  ; =v ; c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            ("yo", Err(err_str("Expected a name-value pair, but no `=` was found in `yo`"))),
             ("a=d#$%^&*()_", cookies!["a" => "d#$%^&*()_"]),
             (
                 "a=%F1%F2%F3%C0%C1%C2",
-                Err(ParseError::ProcessingError(ProcessIncomingError::Decoding(
-                    DecodingError {
-                        raw_value: "d#$%^&*()_".to_string(),
-                        source: anyhow::anyhow!("invalid percent encoding"),
-                    },
-                ))),
+                Err(err_str(
+                    "Failed to percent-decode the value of the `a` cookie: `%F1%F2%F3%C0%C1%C2`",
+                )),
             ),
         ];
 
-        let processor: Processor = Config {
+        let processor: Processor = ProcessorConfig {
             percent_encode: true,
             crypto_rules: vec![],
             ..Default::default()
@@ -437,5 +520,16 @@ mod tests {
         for (string, expected) in cases {
             check_case(string, &processor, expected)
         }
+    }
+
+    #[test]
+    fn get_lifetime() {
+        let mut cookies: RequestCookies<'static> = RequestCookies::new();
+        cookies.append(RequestCookie::new("name", "value"));
+
+        // This is a compile-time test to ensure that we can retrieve
+        // cookies using a key with a shorter lifetime than the cookies themselves.
+        let key = "name".to_string();
+        cookies.get(key.as_str());
     }
 }

@@ -27,11 +27,11 @@
 //! ## Incoming cookies
 //!
 //! ```rust
-//! use biscotti::{Processor, config::Config, RequestCookies};
+//! use biscotti::{Processor, ProcessorConfig, RequestCookies};
 //!
 //! // Start by creating a `Processor` instance from a `Config`.
 //! // It determines if (and which) cookies should be decrypted, verified or percent-decoded.
-//! let processor: Processor = Config::default().into();
+//! let processor: Processor = ProcessorConfig::default().into();
 //! // You can then use `RequestCookies::parse_header` to parse the `Cookie` header
 //! // you received from the client.
 //! let cookies = RequestCookies::parse_header(
@@ -54,7 +54,7 @@
 //!
 //! ```rust
 //! use std::collections::HashSet;
-//! use biscotti::{Processor, config::Config, ResponseCookies, RemovalCookie, ResponseCookie};
+//! use biscotti::{Processor, ProcessorConfig, ResponseCookies, RemovalCookie, ResponseCookie};
 //! use biscotti::SameSite;
 //!
 //! // Start by creating a `ResponseCookies` instance to hold the cookies you want to send.
@@ -69,7 +69,7 @@
 //! // You then convert obtain the respective `Set-Cookie` header values.
 //! // A processor is required: it determines if (and which) cookies should be encrypted,
 //! // signed or percent-encoded.
-//! let processor: Processor = Config::default().into();
+//! let processor: Processor = ProcessorConfig::default().into();
 //! let header_values: HashSet<_> = cookies.header_values(&processor).collect();
 //! assert_eq!(header_values, HashSet::from([
 //!     "name=a%20value".to_string(),
@@ -87,7 +87,6 @@
 //! `biscotti` started as a `cookie` fork and it includes non-negligible portions of its
 //! code.
 //!
-//! [`Config`]: crate::config::Config
 //! [`Processor`]: crate::Processor
 //! [`RequestCookies`]: crate::RequestCookies
 //! [`ResponseCookies`]: crate::ResponseCookies
@@ -106,9 +105,11 @@ mod response_cookies;
 mod same_site;
 
 pub mod request;
+pub mod response;
 
 pub use crate::expiration::*;
 pub use crate::same_site::*;
+pub use config::inner::ProcessorConfig;
 pub use crypto::Key;
 pub use processor::Processor;
 pub use removal::RemovalCookie;
@@ -121,7 +122,7 @@ pub use time;
 
 /// Errors that can occur when using `biscotti`.
 pub mod errors {
-    pub use crate::crypto::KeyError;
+    pub use crate::crypto::{KeyError, ShortKeyError};
     pub use crate::processor::{CryptoError, DecodingError, ProcessIncomingError};
-    pub use crate::request_cookies::ParseError;
+    pub use crate::request_cookies::{EmptyNameError, MissingPairError, ParseError};
 }
