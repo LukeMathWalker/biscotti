@@ -215,7 +215,7 @@ impl TryFrom<Vec<u8>> for Key {
     /// ```
     fn try_from(key: Vec<u8>) -> Result<Self, Self::Error> {
         if key.len() < MINIMUM_KEY_LENGTH {
-            Err(KeyError::TooShort { length: key.len() })
+            Err(KeyError::TooShort(ShortKeyError { length: key.len() }))
         } else {
             Ok(Key(key))
         }

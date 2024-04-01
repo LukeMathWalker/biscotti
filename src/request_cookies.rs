@@ -1,8 +1,9 @@
+use std::borrow::Cow;
+use std::collections::HashMap;
+
 use crate::processor::{ProcessIncomingError, Processor};
 use crate::request::CookiesForName;
 use crate::RequestCookie;
-use std::borrow::Cow;
-use std::collections::HashMap;
 
 #[derive(Default, Debug, Clone)]
 /// A collection of [`RequestCookie`]s attached to an HTTP request using the `Cookie` header.
@@ -243,13 +244,13 @@ pub enum ParseError {
 
 #[cfg(test)]
 mod tests {
+    use googletest::matcher::{Matcher, MatcherResult};
+    use googletest::matchers::{err, pat};
+    use googletest::prelude::{displays_as, eq};
+
     use crate::errors::ParseError::{EmptyName, MissingPair};
-    use crate::processor::DecodingError;
     use crate::ProcessorConfig;
-    use crate::{
-        errors::{ParseError, ProcessIncomingError},
-        Processor, RequestCookie, RequestCookies,
-    };
+    use crate::{errors::ParseError, Processor, RequestCookie, RequestCookies};
 
     /// A helper macro for our testing purposes.
     ///
@@ -283,12 +284,16 @@ mod tests {
     }
 
     #[track_caller]
-    fn check_case(
-        string: &str,
+    fn check_case<'a>(
+        string: &'a str,
         processor: &Processor,
-        expected: Result<RequestCookies, ParseError>,
+        expected: Result<
+            RequestCookies<'a>,
+            Box<dyn Matcher<ActualT = Result<RequestCookies<'a>, ParseError>>>,
+        >,
     ) {
-        match RequestCookies::parse_header(string, processor) {
+        let actual = RequestCookies::parse_header(string, processor);
+        match &actual {
             Ok(actual) => {
                 let expected =
                     expected.unwrap_or_else(|_| panic!("Expected a success for {string}"));
@@ -301,20 +306,16 @@ mod tests {
                     assert_eq!(values, value, "Failed for string: {string}");
                 }
             }
-            Err(e) => {
-                let expected = expected.expect_err(&format!("Expected an error for {string}"));
-                use ParseError::*;
-                match (e, expected) {
-                    (EmptyName, EmptyName)
-                    | (MissingPair, MissingPair)
-                    | (ProcessingError(_), ProcessingError(_)) => {}
-                    (actual, expected) => {
-                        panic!(
-                            "Expected {:?}, but got {:?} for {}",
-                            expected, actual, string
-                        );
-                    }
-                }
+            Err(err) => {
+                let matcher = expected.expect_err(&format!("Expected an error for {string}"));
+                let error = format!(
+                    "Expected: {}\n\
+                    Actual: {err},\n\
+                    {}\n",
+                    matcher.describe(MatcherResult::Match),
+                    matcher.explain_match(&actual)
+                );
+                assert!(matcher.matches(&actual).is_match(), "{error}");
             }
         }
     }
@@ -360,10 +361,13 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(EmptyName)),
-            ("yo", Err(MissingPair)),
+            (";a=1 ;  ; =v ; c=", Err(boxed(err(pat!(EmptyName))))),
+            (" ;   a=1 ;  ; =v ; ;;c=", Err(boxed(err(pat!(EmptyName))))),
+            (
+                " ;   a=1 ;  ; =v ; ;;c===  ",
+                Err(boxed(err(pat!(EmptyName)))),
+            ),
+            ("yo", Err(boxed(err(pat!(MissingPair))))),
         ];
 
         let processor: Processor = ProcessorConfig {
@@ -376,6 +380,10 @@ mod tests {
         for (string, expected) in cases {
             check_case(string, &processor, expected)
         }
+    }
+
+    fn boxed<T>(matcher: impl Matcher<ActualT = T> + 'static) -> Box<dyn Matcher<ActualT = T>> {
+        Box::new(matcher)
     }
 
     #[test]
@@ -419,19 +427,19 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(EmptyName)),
-            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(EmptyName)),
-            ("yo", Err(MissingPair)),
+            (";a=1 ;  ; =v ; c=", Err(boxed(err(pat!(EmptyName))))),
+            (" ;   a=1 ;  ; =v ; ;;c=", Err(boxed(err(pat!(EmptyName))))),
+            (
+                " ;   a=1 ;  ; =v ; ;;c===  ",
+                Err(boxed(err(pat!(EmptyName)))),
+            ),
+            ("yo", Err(boxed(err(pat!(MissingPair))))),
             ("a=d#$%^&*()_", cookies!["a" => "d#$%^&*()_"]),
             (
                 "a=%F1%F2%F3%C0%C1%C2",
-                Err(ParseError::ProcessingError(ProcessIncomingError::Decoding(
-                    DecodingError {
-                        raw_value: "d#$%^&*()_".to_string(),
-                        source: anyhow::anyhow!("invalid percent encoding"),
-                    },
-                ))),
+                Err(boxed(err(displays_as(eq(
+                    "Failed to percent-decode the value of the `a` cookie: `%F1%F2%F3%C0%C1%C2`",
+                ))))),
             ),
         ];
 

@@ -4,9 +4,9 @@ use crate::crypto::Key;
 use crate::encoding::encode;
 use crate::ProcessorConfig;
 use crate::{config, RequestCookie, ResponseCookie};
-use anyhow::Context;
 use percent_encoding::percent_decode;
 use std::collections::HashMap;
+use std::str::Utf8Error;
 
 /// Transforms cookies before they are sent to the client, or after they have been parsed from an incoming request.
 ///
@@ -137,26 +137,25 @@ impl Processor {
             decode_value = true;
         }
         if self.percent_encode {
-            cookie.name = percent_decode(name.as_bytes())
-                .decode_utf8()
-                .context("Failed to percent-decode the cookie name")
-                .map_err(|e| DecodingError {
-                    source: e,
-                    raw_value: name.to_string(),
-                })?;
+            cookie.name =
+                percent_decode(name.as_bytes())
+                    .decode_utf8()
+                    .map_err(|e| DecodingError {
+                        invalid_part: InvalidCookiePart::Name {
+                            raw_value: name.to_string(),
+                        },
+                        source: e,
+                    })?;
         }
 
         if self.percent_encode && decode_value {
             cookie.value = percent_decode(value.as_bytes())
                 .decode_utf8()
-                .with_context(|| {
-                    format!(
-                        "Failed to percent-decode the value of the cookie named '{}'",
-                        cookie.name
-                    )
-                })
                 .map_err(|e| DecodingError {
-                    raw_value: value.to_string(),
+                    invalid_part: InvalidCookiePart::Value {
+                        cookie_name: cookie.name.clone().into_owned(),
+                        raw_value: value.to_string(),
+                    },
                     source: e,
                 })?;
         }
@@ -175,25 +174,14 @@ pub enum ProcessIncomingError {
     Decoding(#[from] DecodingError),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 /// An error that occurred while decrypting or verifying an incoming request cookie.
 ///
 /// This error is returned by [`Processor::process_incoming`].
 pub struct CryptoError {
+    name: String,
     r#type: CryptoAlgorithm,
-    #[source]
     source: anyhow::Error,
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("{source}")]
-/// An error that occurred while decoding a percent-encoded cookie name or value.
-///
-/// This error is returned by [`Processor::process_incoming`].
-pub struct DecodingError {
-    pub(crate) raw_value: String,
-    #[source]
-    pub(crate) source: anyhow::Error,
 }
 
 impl std::fmt::Display for CryptoError {
@@ -202,8 +190,62 @@ impl std::fmt::Display for CryptoError {
             CryptoAlgorithm::Encryption => "an encrypted",
             CryptoAlgorithm::Signing => "a signed",
         };
-        write!(f, "Failed to process {t} request cookie")
+        write!(f, "Failed to process `{}` as {t} request cookie", self.name)
     }
+}
+
+impl std::error::Error for CryptoError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+#[derive(Debug)]
+/// An error that occurred while decoding a percent-encoded cookie name or value.
+///
+/// This error is returned by [`Processor::process_incoming`].
+pub struct DecodingError {
+    invalid_part: InvalidCookiePart,
+    source: Utf8Error,
+}
+
+impl std::fmt::Display for DecodingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.invalid_part {
+            InvalidCookiePart::Name { raw_value } => {
+                write!(
+                    f,
+                    "Failed to percent-decode the name of a cookie: `{raw_value}`",
+                )
+            }
+            InvalidCookiePart::Value {
+                cookie_name,
+                raw_value,
+            } => {
+                write!(
+                    f,
+                    "Failed to percent-decode the value of the `{cookie_name}` cookie: `{raw_value}`",
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for DecodingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum InvalidCookiePart {
+    Name {
+        raw_value: String,
+    },
+    Value {
+        cookie_name: String,
+        raw_value: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -238,11 +280,13 @@ impl CryptoConfig {
             Self::Encryption { key } => {
                 key.decrypt(name.as_bytes(), value.as_bytes())
                     .map_err(|e| CryptoError {
+                        name: name.to_owned(),
                         r#type: CryptoAlgorithm::Encryption,
                         source: e,
                     })
             }
             Self::Signing { key } => key.verify(name, value).map_err(|e| CryptoError {
+                name: name.to_owned(),
                 r#type: CryptoAlgorithm::Signing,
                 source: e,
             }),
@@ -393,7 +437,10 @@ mod tests {
         .into();
         let err = RequestCookies::parse_header(&header, &processor)
             .expect_err("A non-signed cookie passed verification, bad!");
-        assert_eq!(err.to_string(), "Failed to process a signed request cookie");
+        assert_eq!(
+            err.to_string(),
+            "Failed to process `session` as a signed request cookie"
+        );
     }
 
     #[test]
@@ -416,7 +463,7 @@ mod tests {
             .expect_err("A non-encrypted cookie passed, bad!");
         assert_eq!(
             err.to_string(),
-            "Failed to process an encrypted request cookie"
+            "Failed to process `session` as an encrypted request cookie"
         );
     }
 
