@@ -26,7 +26,6 @@ rand = "0.8"
 aes-gcm-siv = "0.11.1"
 base64 = "0.22.0"
 hmac = "0.12.1"
-thiserror = "1.0.57"
 anyhow = "1"
 serde = { version = "1.0.197", features = ["derive"], optional = true }
 log = "0.4.21"

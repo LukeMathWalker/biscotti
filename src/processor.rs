@@ -359,6 +359,7 @@ mod tests {
     use crate::config::{CryptoAlgorithm, CryptoRule, FallbackConfig};
     use crate::encoding::encode;
     use crate::{Key, Processor, ProcessorConfig, RequestCookies, ResponseCookie};
+    use std::error::Error;
 
     #[test]
     fn roundtrip_encryption() {
@@ -467,6 +468,10 @@ mod tests {
             .expect_err("A non-signed cookie passed verification, bad!");
         assert_eq!(
             err.to_string(),
+            "Failed to parse cookies out of a header value"
+        );
+        assert_eq!(
+            err.source().unwrap().to_string(),
             "Failed to process `session` as a signed request cookie"
         );
     }
@@ -491,6 +496,10 @@ mod tests {
             .expect_err("A non-encrypted cookie passed, bad!");
         assert_eq!(
             err.to_string(),
+            "Failed to parse cookies out of a header value"
+        );
+        assert_eq!(
+            err.source().unwrap().to_string(),
             "Failed to process `session` as an encrypted request cookie"
         );
     }

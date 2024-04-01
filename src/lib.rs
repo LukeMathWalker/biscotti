@@ -124,5 +124,5 @@ pub use time;
 pub mod errors {
     pub use crate::crypto::{KeyError, ShortKeyError};
     pub use crate::processor::{CryptoError, DecodingError, ProcessIncomingError};
-    pub use crate::request_cookies::ParseError;
+    pub use crate::request_cookies::{EmptyNameError, MissingPairError, ParseError};
 }

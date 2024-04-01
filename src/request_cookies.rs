@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+use crate::errors::{CryptoError, DecodingError};
 use crate::processor::{ProcessIncomingError, Processor};
 use crate::request::CookiesForName;
 use crate::RequestCookie;
@@ -201,14 +202,30 @@ impl<'cookie> RequestCookies<'cookie> {
 
             let (name, value) = match cookie.split_once('=') {
                 Some((name, value)) => (name.trim(), value.trim()),
-                None => return Err(ParseError::MissingPair),
+                None => {
+                    let e = MissingPairError {
+                        fragment: cookie.to_string(),
+                    };
+                    return Err(ParseError::MissingPair(e));
+                }
             };
 
             if name.is_empty() {
-                return Err(ParseError::EmptyName);
+                let e = EmptyNameError {
+                    value: value.to_string(),
+                };
+                return Err(ParseError::EmptyName(e));
             }
 
-            let cookie = processor.process_incoming(name, value)?;
+            let cookie = match processor.process_incoming(name, value) {
+                Ok(c) => c,
+                Err(e) => {
+                    return match e {
+                        ProcessIncomingError::Crypto(e) => Err(ParseError::Crypto(e)),
+                        ProcessIncomingError::Decoding(e) => Err(ParseError::Decoding(e)),
+                    }
+                }
+            };
 
             self.append(cookie);
         }
@@ -231,26 +248,80 @@ impl<'cookie> RequestCookies<'cookie> {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
+#[non_exhaustive]
 /// The error returned by [`RequestCookies::parse_header()`].
 pub enum ParseError {
-    #[error("Expected a name-value pair, but no `=` was found")]
-    MissingPair,
-    #[error("Cookie name is empty")]
-    EmptyName,
-    #[error(transparent)]
-    ProcessingError(#[from] ProcessIncomingError),
+    MissingPair(MissingPairError),
+    EmptyName(EmptyNameError),
+    Crypto(CryptoError),
+    Decoding(DecodingError),
 }
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Failed to parse cookies out of a header value")
+    }
+}
+
+impl std::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ParseError::MissingPair(e) => Some(e),
+            ParseError::EmptyName(e) => Some(e),
+            ParseError::Crypto(e) => Some(e),
+            ParseError::Decoding(e) => Some(e),
+        }
+    }
+}
+
+#[derive(Debug)]
+/// An error that occurs when parsing a fragment of a `Cookie` header value
+/// that doesn't contain a name-value separator (`=`).
+pub struct MissingPairError {
+    fragment: String,
+}
+
+impl std::fmt::Display for MissingPairError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Expected a name-value pair, but no `=` was found in `{}`",
+            self.fragment
+        )
+    }
+}
+
+impl std::error::Error for MissingPairError {}
+
+#[derive(Debug)]
+/// An error that occurs when parsing a fragment of a `Cookie` header value
+/// that contains an empty name (e.g. `=value`).
+pub struct EmptyNameError {
+    value: String,
+}
+
+impl std::fmt::Display for EmptyNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The name of a cookie cannot be empty, but found an empty name with `{}` as value",
+            self.value
+        )
+    }
+}
+
+impl std::error::Error for EmptyNameError {}
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+
     use googletest::matcher::{Matcher, MatcherResult};
-    use googletest::matchers::{err, pat};
     use googletest::prelude::{displays_as, eq};
 
-    use crate::errors::ParseError::{EmptyName, MissingPair};
     use crate::ProcessorConfig;
-    use crate::{errors::ParseError, Processor, RequestCookie, RequestCookies};
+    use crate::{Processor, RequestCookie, RequestCookies};
 
     /// A helper macro for our testing purposes.
     ///
@@ -287,10 +358,7 @@ mod tests {
     fn check_case<'a>(
         string: &'a str,
         processor: &Processor,
-        expected: Result<
-            RequestCookies<'a>,
-            Box<dyn Matcher<ActualT = Result<RequestCookies<'a>, ParseError>>>,
-        >,
+        expected: Result<RequestCookies<'a>, Box<dyn Matcher<ActualT = String>>>,
     ) {
         let actual = RequestCookies::parse_header(string, processor);
         match &actual {
@@ -307,15 +375,16 @@ mod tests {
                 }
             }
             Err(err) => {
+                let source = err.source().unwrap().to_string();
                 let matcher = expected.expect_err(&format!("Expected an error for {string}"));
                 let error = format!(
                     "Expected: {}\n\
                     Actual: {err},\n\
                     {}\n",
                     matcher.describe(MatcherResult::Match),
-                    matcher.explain_match(&actual)
+                    matcher.explain_match(&source)
                 );
-                assert!(matcher.matches(&actual).is_match(), "{error}");
+                assert!(matcher.matches(&source).is_match(), "{error}");
             }
         }
     }
@@ -361,13 +430,10 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(boxed(err(pat!(EmptyName))))),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(boxed(err(pat!(EmptyName))))),
-            (
-                " ;   a=1 ;  ; =v ; ;;c===  ",
-                Err(boxed(err(pat!(EmptyName)))),
-            ),
-            ("yo", Err(boxed(err(pat!(MissingPair))))),
+            (";a=1 ;  ; =v ; c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            ("yo", Err(err_str("Expected a name-value pair, but no `=` was found in `yo`"))),
         ];
 
         let processor: Processor = ProcessorConfig {
@@ -384,6 +450,10 @@ mod tests {
 
     fn boxed<T>(matcher: impl Matcher<ActualT = T> + 'static) -> Box<dyn Matcher<ActualT = T>> {
         Box::new(matcher)
+    }
+
+    fn err_str(s: &'static str) -> Box<dyn Matcher<ActualT = String>> {
+        boxed(displays_as(eq(s)))
     }
 
     #[test]
@@ -427,19 +497,16 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(boxed(err(pat!(EmptyName))))),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(boxed(err(pat!(EmptyName))))),
-            (
-                " ;   a=1 ;  ; =v ; ;;c===  ",
-                Err(boxed(err(pat!(EmptyName)))),
-            ),
-            ("yo", Err(boxed(err(pat!(MissingPair))))),
+            (";a=1 ;  ; =v ; c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
+            ("yo", Err(err_str("Expected a name-value pair, but no `=` was found in `yo`"))),
             ("a=d#$%^&*()_", cookies!["a" => "d#$%^&*()_"]),
             (
                 "a=%F1%F2%F3%C0%C1%C2",
-                Err(boxed(err(displays_as(eq(
+                Err(err_str(
                     "Failed to percent-decode the value of the `a` cookie: `%F1%F2%F3%C0%C1%C2`",
-                ))))),
+                )),
             ),
         ];
 
