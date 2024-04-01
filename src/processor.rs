@@ -12,7 +12,7 @@ use std::collections::HashMap;
 ///
 /// # Creating a `Processor`
 ///
-/// A processor is created from a [`Config`] using the [`From`] trait.
+/// A processor is created from a [`ProcessorConfig`] using the [`From`] trait.
 ///
 /// ```rust
 /// use biscotti::{Processor, ProcessorConfig, Key};

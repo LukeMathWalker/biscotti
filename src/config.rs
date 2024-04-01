@@ -1,9 +1,9 @@
 //! Configuration for a [`Processor`].
 //!
-//! Check out the [`Config`] struct for more information.
+//! Check out the [`ProcessorConfig`] struct for more information.
 //!
 //! [`Processor`]: crate::Processor
-//!
+//! [`ProcessorConfig`]: crate::ProcessorConfig
 pub use inner::{CryptoAlgorithm, CryptoRule, FallbackConfig};
 
 pub(crate) mod inner {
