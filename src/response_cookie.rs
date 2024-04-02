@@ -612,7 +612,7 @@ impl<'c> ResponseCookie<'c> {
     /// **Note:** This cookie attribute is an [HTTP draft]! Its meaning and
     /// definition are not standardized and therefore subject to change.
     ///
-    /// [HTTP draft]: https://www.ietf.org/id/draft-cutler-httpbis-partitioned-cookies-01.html
+    /// [HTTP draft]: https://datatracker.ietf.org/doc/draft-cutler-httpbis-partitioned-cookies/
     ///
     /// # Example
     ///
