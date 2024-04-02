@@ -261,7 +261,7 @@ impl<'cookie> ResponseCookies<'cookie> {
     ///     }
     /// }
     /// ```
-    pub fn iter(&self) -> ResponseCookiesIter {
+    pub fn iter<'map>(&'map self) -> ResponseCookiesIter<'map, 'cookie> {
         ResponseCookiesIter {
             cookies: self.cookies.values(),
         }
