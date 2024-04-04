@@ -50,6 +50,7 @@ pub(crate) mod inner {
         /// If `false`, cookie values and names are used as is.
         ///
         /// By default, this field is `true`.
+        #[cfg_attr(feature = "serde", serde(default = "percent_encode_default"))]
         pub percent_encode: bool,
         /// By default:
         ///
@@ -58,7 +59,16 @@ pub(crate) mod inner {
         ///
         /// You can opt into higher cryptographic guarantees for specific cookies using
         /// one or more [`CryptoRule`]s.
+        #[cfg_attr(feature = "serde", serde(default = "crypto_rules_default"))]
         pub crypto_rules: Vec<CryptoRule>,
+    }
+
+    fn percent_encode_default() -> bool {
+        true
+    }
+
+    fn crypto_rules_default() -> Vec<CryptoRule> {
+        vec![]
     }
 
     /// `CryptoRule` specifies whether certain cookies should be encrypted or signed.
@@ -134,8 +144,8 @@ pub(crate) mod inner {
     impl Default for ProcessorConfig {
         fn default() -> Self {
             ProcessorConfig {
-                percent_encode: true,
-                crypto_rules: vec![],
+                percent_encode: percent_encode_default(),
+                crypto_rules: crypto_rules_default(),
             }
         }
     }
