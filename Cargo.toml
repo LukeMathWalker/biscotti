@@ -1,6 +1,6 @@
 [package]
 name = "biscotti"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 authors = ["Luca Palmieri <rust@lpalmieri.com>"]
 license = "MIT OR Apache-2.0"
