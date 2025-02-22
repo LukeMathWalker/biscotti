@@ -914,7 +914,7 @@ impl<'c> ResponseCookie<'c> {
     }
 }
 
-impl<'c> fmt::Display for ResponseCookie<'c> {
+impl fmt::Display for ResponseCookie<'_> {
     /// Formats the cookie `self` as a `Set-Cookie` header value.
     ///
     /// # Example
@@ -931,7 +931,7 @@ impl<'c> fmt::Display for ResponseCookie<'c> {
     }
 }
 
-impl<'a, 'b> PartialEq<ResponseCookie<'b>> for ResponseCookie<'a> {
+impl<'b> PartialEq<ResponseCookie<'b>> for ResponseCookie<'_> {
     fn eq(&self, other: &ResponseCookie<'b>) -> bool {
         let so_far_so_good = self.name() == other.name()
             && self.value() == other.value()

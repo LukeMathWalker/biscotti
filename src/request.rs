@@ -23,7 +23,7 @@ impl<'map, 'cookie> CookiesForName<'map, 'cookie> {
     }
 }
 
-impl<'map, 'cookie> Iterator for CookiesForName<'map, 'cookie> {
+impl<'cookie> Iterator for CookiesForName<'_, 'cookie> {
     type Item = RequestCookie<'cookie>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -44,7 +44,7 @@ pub struct CookieValuesForName<'map, 'cookie> {
     pub(crate) iter: Iter<'map, Cow<'cookie, str>>,
 }
 
-impl<'map, 'cookie> Iterator for CookieValuesForName<'map, 'cookie> {
+impl<'map> Iterator for CookieValuesForName<'map, '_> {
     type Item = &'map str;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -56,11 +56,11 @@ impl<'map, 'cookie> Iterator for CookieValuesForName<'map, 'cookie> {
     }
 }
 
-impl<'map, 'cookie> ExactSizeIterator for CookiesForName<'map, 'cookie> {}
+impl ExactSizeIterator for CookiesForName<'_, '_> {}
 
-impl<'map, 'cookie> ExactSizeIterator for CookieValuesForName<'map, 'cookie> {}
+impl ExactSizeIterator for CookieValuesForName<'_, '_> {}
 
-impl<'map, 'cookie> DoubleEndedIterator for CookiesForName<'map, 'cookie> {
+impl DoubleEndedIterator for CookiesForName<'_, '_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.iter
             .next_back()
@@ -68,12 +68,12 @@ impl<'map, 'cookie> DoubleEndedIterator for CookiesForName<'map, 'cookie> {
     }
 }
 
-impl<'map, 'cookie> DoubleEndedIterator for CookieValuesForName<'map, 'cookie> {
+impl DoubleEndedIterator for CookieValuesForName<'_, '_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.iter.next_back().map(|value| value.as_ref())
     }
 }
 
-impl<'map, 'cookie> std::iter::FusedIterator for CookiesForName<'map, 'cookie> {}
+impl std::iter::FusedIterator for CookiesForName<'_, '_> {}
 
-impl<'map, 'cookie> std::iter::FusedIterator for CookieValuesForName<'map, 'cookie> {}
+impl std::iter::FusedIterator for CookieValuesForName<'_, '_> {}

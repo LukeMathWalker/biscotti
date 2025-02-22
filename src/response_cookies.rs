@@ -305,9 +305,9 @@ mod test {
     #[test]
     fn get_lifetime() {
         // The lifetime of the key is decoupled from the lifetime of the returned value.
-        fn get<'a, 'b>(
+        fn get<'a>(
             c: &'a ResponseCookies<'static>,
-            key: &'b str,
+            key: &str,
         ) -> Option<&'a ResponseCookie<'static>> {
             c.get(key)
         }
