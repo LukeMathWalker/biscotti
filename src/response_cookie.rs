@@ -902,7 +902,9 @@ impl<'c> ResponseCookie<'c> {
             let time = time.to_offset(UtcOffset::UTC);
 
             // From http://tools.ietf.org/html/rfc2616#section-3.3.1.
-            static FMT1: &[FormatItem<'_>] = format_description!("[weekday repr:short], [day] [month repr:short] [year padding:none] [hour]:[minute]:[second] GMT");
+            static FMT1: &[FormatItem<'_>] = format_description!(
+                "[weekday repr:short], [day] [month repr:short] [year padding:none] [hour]:[minute]:[second] GMT"
+            );
             write!(
                 f,
                 "; Expires={}",

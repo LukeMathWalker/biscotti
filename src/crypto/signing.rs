@@ -1,7 +1,7 @@
 use crate::Key;
 use anyhow::Context;
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use hmac::digest::OutputSizeUser;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;

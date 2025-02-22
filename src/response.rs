@@ -1,8 +1,8 @@
 //! Low-level types related to [`ResponseCookies`].
 //!
 //! [`ResponseCookies`]: crate::ResponseCookies
-use crate::response_cookies::ResponseCookieKey;
 use crate::ResponseCookie;
+use crate::response_cookies::ResponseCookieKey;
 use std::collections::hash_map::Values;
 
 /// Iterator over all the cookies in a [`ResponseCookies`].

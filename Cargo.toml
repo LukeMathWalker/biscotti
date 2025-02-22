@@ -1,7 +1,7 @@
 [package]
 name = "biscotti"
 version = "0.3.5"
-edition = "2021"
+edition = "2024"
 authors = ["Luca Palmieri <rust@lpalmieri.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/LukeMathWalker/biscotti"
@@ -17,7 +17,11 @@ default = ["serde"]
 serde = ["dep:serde"]
 
 [dependencies]
-time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+time = { version = "0.3", default-features = false, features = [
+    "std",
+    "formatting",
+    "macros",
+] }
 percent-encoding = "2.0"
 subtle = "2.5.0"
 hkdf = "0.12"

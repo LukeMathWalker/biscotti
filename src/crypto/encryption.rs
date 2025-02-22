@@ -4,8 +4,8 @@ use aes_gcm_siv::aead::generic_array::GenericArray;
 use aes_gcm_siv::aead::{Aead, Payload};
 use aes_gcm_siv::{AeadInPlace, Aes256GcmSiv, KeyInit};
 use anyhow::Context;
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use rand::RngCore;
 use sha2::Sha256;
 

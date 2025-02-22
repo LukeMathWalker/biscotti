@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+use crate::RequestCookie;
 use crate::errors::{CryptoError, DecodingError};
 use crate::processor::{ProcessIncomingError, Processor};
 use crate::request::CookiesForName;
-use crate::RequestCookie;
 
 #[derive(Default, Debug, Clone)]
 /// A collection of [`RequestCookie`]s attached to an HTTP request using the `Cookie` header.
@@ -69,7 +69,7 @@ impl<'cookie> RequestCookies<'cookie> {
     /// Inserts a new [`RequestCookie`] into `self`.
     ///
     /// If a cookie with the same name already exists, **the existing value
-    /// list is discarded and replaced with the new value**.  
+    /// list is discarded and replaced with the new value**.
     ///
     /// If you want to append a new value to the existing value list, use
     /// [`RequestCookies::append()`].
@@ -141,7 +141,7 @@ impl<'cookie> RequestCookies<'cookie> {
         })
     }
 
-    /// Get all cookie values for a given cookie name.  
+    /// Get all cookie values for a given cookie name.
     /// If there are no cookies with the given name, the method returns `None`.
     ///
     /// If you want to get the first cookie value for a given name, use the
@@ -223,7 +223,7 @@ impl<'cookie> RequestCookies<'cookie> {
                     return match e {
                         ProcessIncomingError::Crypto(e) => Err(ParseError::Crypto(e)),
                         ProcessIncomingError::Decoding(e) => Err(ParseError::Decoding(e)),
-                    }
+                    };
                 }
             };
 
@@ -430,10 +430,30 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
-            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
-            ("yo", Err(err_str("Expected a name-value pair, but no `=` was found in `yo`"))),
+            (
+                ";a=1 ;  ; =v ; c=",
+                Err(err_str(
+                    "The name of a cookie cannot be empty, but found an empty name with `v` as value",
+                )),
+            ),
+            (
+                " ;   a=1 ;  ; =v ; ;;c=",
+                Err(err_str(
+                    "The name of a cookie cannot be empty, but found an empty name with `v` as value",
+                )),
+            ),
+            (
+                " ;   a=1 ;  ; =v ; ;;c===  ",
+                Err(err_str(
+                    "The name of a cookie cannot be empty, but found an empty name with `v` as value",
+                )),
+            ),
+            (
+                "yo",
+                Err(err_str(
+                    "Expected a name-value pair, but no `=` was found in `yo`",
+                )),
+            ),
         ];
 
         let processor: Processor = ProcessorConfig {
@@ -497,10 +517,30 @@ mod tests {
             (";a=1 ;  ; b=2 ", cookies!["a" => "1", "b" => "2"]),
             (";a=1 ;  ; b= ", cookies!["a" => "1", "b" => ""]),
             (" ;   a=1 ;  ; ;;c===  ", cookies!["a" => "1", "c" => "=="]),
-            (";a=1 ;  ; =v ; c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
-            (" ;   a=1 ;  ; =v ; ;;c=", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
-            (" ;   a=1 ;  ; =v ; ;;c===  ", Err(err_str("The name of a cookie cannot be empty, but found an empty name with `v` as value"))),
-            ("yo", Err(err_str("Expected a name-value pair, but no `=` was found in `yo`"))),
+            (
+                ";a=1 ;  ; =v ; c=",
+                Err(err_str(
+                    "The name of a cookie cannot be empty, but found an empty name with `v` as value",
+                )),
+            ),
+            (
+                " ;   a=1 ;  ; =v ; ;;c=",
+                Err(err_str(
+                    "The name of a cookie cannot be empty, but found an empty name with `v` as value",
+                )),
+            ),
+            (
+                " ;   a=1 ;  ; =v ; ;;c===  ",
+                Err(err_str(
+                    "The name of a cookie cannot be empty, but found an empty name with `v` as value",
+                )),
+            ),
+            (
+                "yo",
+                Err(err_str(
+                    "Expected a name-value pair, but no `=` was found in `yo`",
+                )),
+            ),
             ("a=d#$%^&*()_", cookies!["a" => "d#$%^&*()_"]),
             (
                 "a=%F1%F2%F3%C0%C1%C2",
