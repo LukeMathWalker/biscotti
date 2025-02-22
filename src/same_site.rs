@@ -26,12 +26,16 @@ use std::fmt;
 /// [`Cookie::set_same_site()`]: crate::ResponseCookie::set_same_site()
 /// [HTTP draft]: https://tools.ietf.org/html/draft-west-cookie-incrementalism-00
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum SameSite {
     /// The "Strict" `SameSite` attribute.
+    #[cfg_attr(feature = "serde", serde(alias = "strict"))]
     Strict,
     /// The "Lax" `SameSite` attribute.
+    #[cfg_attr(feature = "serde", serde(alias = "lax"))]
     Lax,
     /// The "None" `SameSite` attribute.
+    #[cfg_attr(feature = "serde", serde(alias = "none"))]
     None,
 }
 
@@ -95,14 +99,19 @@ impl SameSite {
             SameSite::Lax | SameSite::Strict => false,
         }
     }
+
+    /// Returns the `SameSite` attribute as a string slice.
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            SameSite::Strict => "Strict",
+            SameSite::Lax => "Lax",
+            SameSite::None => "None",
+        }
+    }
 }
 
 impl fmt::Display for SameSite {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            SameSite::Strict => write!(f, "Strict"),
-            SameSite::Lax => write!(f, "Lax"),
-            SameSite::None => write!(f, "None"),
-        }
+        f.write_str(self.as_str())
     }
 }
