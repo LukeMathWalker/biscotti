@@ -22,6 +22,15 @@ mod deser {
             Ok(key)
         }
     }
+
+    impl serde::Serialize for Key {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
 }
 
 impl PartialEq for Key {
@@ -39,7 +48,7 @@ impl std::fmt::Debug for Key {
 }
 
 impl Key {
-    /// Creates a new [`Key`] from a string that's at least 256-bits (32 bytes) long.  
+    /// Creates a new [`Key`] from a string that's at least 256-bits (32 bytes) long.
     /// For security, the master key _must_ be cryptographically random.
     ///
     /// # Panics

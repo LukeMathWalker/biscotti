@@ -40,7 +40,7 @@ pub(crate) mod inner {
     /// [`Processor`]: crate::Processor
     #[derive(Debug, Clone)]
     #[non_exhaustive]
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     pub struct ProcessorConfig {
         /// If `true`, all cookie values and names are automatically:
         ///
@@ -73,7 +73,7 @@ pub(crate) mod inner {
 
     /// `CryptoRule` specifies whether certain cookies should be encrypted or signed.
     #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     pub struct CryptoRule {
         /// The names of the cookies to which this rule applies.
         pub cookie_names: Vec<String>,
@@ -87,14 +87,14 @@ pub(crate) mod inner {
         /// cryptographically secure random number generator.
         pub key: Key,
         /// Fallbacks are used to decrypt/verify request cookies that failed to
-        /// be decrypted/verified using the primary key.  
+        /// be decrypted/verified using the primary key.
         /// Fallbacks are never used to encrypt/sign response cookies.
         ///
         /// # Key rotation
         ///
-        /// Fallbacks exist to enable **key and algorithm rotation**.  
+        /// Fallbacks exist to enable **key and algorithm rotation**.
         /// From time to time, you may want to change the key used to sign or encrypt cookies, or update
-        /// the algorithm.  
+        /// the algorithm.
         /// If you do this naively
         /// (e.g. change [`CryptoRule::key`] or [`CryptoRule::algorithm`] to a new value),
         /// the server will immediately start rejecting all existing cookies
@@ -114,7 +114,7 @@ pub(crate) mod inner {
     }
 
     #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     /// A fallback configuration for either decrypting or verifying a cookie.
     ///
     /// Check out [`CryptoRule::fallbacks`] for more information.
@@ -127,7 +127,7 @@ pub(crate) mod inner {
 
     /// The two cryptographic processes that can be applied to a cookie value.
     #[derive(Debug, Clone, Copy)]
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[non_exhaustive]
     pub enum CryptoAlgorithm {
         /// The cookie value will be encrypted using [AEAD-AES-256-GCM-SIV](https://www.rfc-editor.org/rfc/rfc8452.html).
@@ -135,7 +135,7 @@ pub(crate) mod inner {
         /// Encryption guarantees **confidentiality** of the value as well as its
         /// **integrity**.
         Encryption,
-        /// The cookie will be signed using [HMAC-SHA256](https://www.rfc-editor.org/rfc/rfc2104.html).  
+        /// The cookie will be signed using [HMAC-SHA256](https://www.rfc-editor.org/rfc/rfc2104.html).
         ///
         /// Signing guarantees **integrity** of the value.
         Signing,
