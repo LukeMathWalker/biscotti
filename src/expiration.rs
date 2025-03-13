@@ -92,7 +92,7 @@ impl Expiration {
     pub fn datetime(&self) -> Option<&Zoned> {
         match self {
             Expiration::Session => None,
-            Expiration::DateTime(v) => Some(&v),
+            Expiration::DateTime(v) => Some(v),
         }
     }
 
