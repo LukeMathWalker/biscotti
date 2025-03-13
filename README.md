@@ -9,7 +9,7 @@ A crate to handle HTTP cookies in a Rust server.
 
 ## Overview
 
-You can use `biscotti` to handle cookies in your server.  
+You can use `biscotti` to handle cookies in your server.
 
 It has support for:
 
@@ -26,7 +26,7 @@ In particular:
 
 ## Non-goals
 
-`biscotti` is not designed to handle cookies on the client side.  
+`biscotti` is not designed to handle cookies on the client side.
 It doesn't provide any logic to parse the `Set-Cookie` headers returned in a server response.
 
 ## Quickstart
@@ -90,7 +90,7 @@ assert_eq!(header_values, HashSet::from([
 ### Credits
 
 `biscotti` is heavily inspired by the [`cookie` crate](https://crates.io/crates/cookie) [Copyright (c) 2017 Sergio Benitez,
-Copyright (c) 2014 Alex Crichton].  
+Copyright (c) 2014 Alex Crichton].
 `biscotti` started as a `cookie` fork and it includes non-negligible portions of its
 code.
 
