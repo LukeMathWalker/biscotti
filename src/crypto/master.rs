@@ -1,4 +1,4 @@
-use rand::RngCore;
+use rand::TryRngCore;
 
 const MINIMUM_KEY_LENGTH: usize = 32;
 
@@ -106,7 +106,7 @@ impl Key {
     /// let key = Key::try_generate();
     /// ```
     pub fn try_generate() -> Option<Key> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut key: Vec<u8> = vec![0; MINIMUM_KEY_LENGTH * 2];
         rng.try_fill_bytes(&mut key).ok()?;
         Some(Key::from(key))

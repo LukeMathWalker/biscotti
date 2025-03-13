@@ -40,7 +40,7 @@ impl EncryptionKey {
         Self(GenericArray::from(derived))
     }
 
-    /// Encrypts a cookie value using the given key.  
+    /// Encrypts a cookie value using the given key.
     /// The encrypted value is tied to the cookie's name to prevent value swapping.
     pub(crate) fn encrypt(&self, name: &[u8], value: &[u8]) -> String {
         // Create a vec to hold the [nonce | cookie value | tag].
@@ -52,9 +52,8 @@ impl EncryptionKey {
         in_out.copy_from_slice(value);
 
         // Fill nonce piece with random data.
-        let mut rng = rand::thread_rng();
-        rng.try_fill_bytes(nonce)
-            .expect("couldn't random fill nonce");
+        let mut rng = rand::rng();
+        rng.fill_bytes(nonce);
         let nonce = GenericArray::clone_from_slice(nonce);
 
         // Perform the actual sealing operation, using the cookie's name as

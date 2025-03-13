@@ -1,4 +1,4 @@
-use time::OffsetDateTime;
+use jiff::Zoned;
 
 /// A cookie's expiration: either a date-time or session.
 ///
@@ -9,23 +9,22 @@ use time::OffsetDateTime;
 ///   * `OffsetDateTime` -> `Expiration::DateTime`
 ///
 /// ```rust
-/// use biscotti::Expiration;
-/// use time::OffsetDateTime;
+/// use biscotti::{Expiration, time::Zoned};
 ///
 /// let expires = Expiration::from(None);
 /// assert_eq!(expires, Expiration::Session);
 ///
-/// let now = OffsetDateTime::now_utc();
-/// let expires = Expiration::from(now);
-/// assert_eq!(expires, Expiration::DateTime(now));
+/// let now = Zoned::now();
+/// let expires = Expiration::from(now.clone());
+/// assert_eq!(expires, Expiration::DateTime(now.clone()));
 ///
-/// let expires = Expiration::from(Some(now));
+/// let expires = Expiration::from(Some(now.clone()));
 /// assert_eq!(expires, Expiration::DateTime(now));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expiration {
     /// Expiration for a "permanent" cookie at a specific date-time.
-    DateTime(OffsetDateTime),
+    DateTime(Zoned),
     /// Expiration for a "session" cookie. Browsers define the notion of a
     /// "session" and will automatically expire session cookies when they deem
     /// the "session" to be over. This is typically, but need not be, when the
@@ -39,13 +38,12 @@ impl Expiration {
     /// # Example
     ///
     /// ```rust
-    /// use biscotti::Expiration;
-    /// use time::OffsetDateTime;
+    /// use biscotti::{Expiration, time::Zoned};
     ///
     /// let expires = Expiration::from(None);
     /// assert!(!expires.is_datetime());
     ///
-    /// let expires = Expiration::from(OffsetDateTime::now_utc());
+    /// let expires = Expiration::from(Zoned::now());
     /// assert!(expires.is_datetime());
     /// ```
     pub fn is_datetime(&self) -> bool {
@@ -60,13 +58,12 @@ impl Expiration {
     /// # Example
     ///
     /// ```rust
-    /// use biscotti::Expiration;
-    /// use time::OffsetDateTime;
+    /// use biscotti::{Expiration, time::Zoned};
     ///
     /// let expires = Expiration::from(None);
     /// assert!(expires.is_session());
     ///
-    /// let expires = Expiration::from(OffsetDateTime::now_utc());
+    /// let expires = Expiration::from(Zoned::now());
     /// assert!(!expires.is_session());
     /// ```
     pub fn is_session(&self) -> bool {
@@ -76,25 +73,26 @@ impl Expiration {
         }
     }
 
-    /// Returns the inner `OffsetDateTime` if `self` is a `DateTime`.
+    /// Returns a reference to the inner [`Zoned`] value if `self` is a `DateTime`.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use biscotti::Expiration;
-    /// use time::OffsetDateTime;
+    /// use biscotti::{Expiration, time::Zoned};
     ///
     /// let expires = Expiration::from(None);
     /// assert!(expires.datetime().is_none());
     ///
-    /// let now = OffsetDateTime::now_utc();
-    /// let expires = Expiration::from(now);
-    /// assert_eq!(expires.datetime(), Some(now));
+    /// let now = Zoned::now();
+    /// let expires = Expiration::from(now.clone());
+    /// assert_eq!(expires.datetime(), Some(&now));
     /// ```
-    pub fn datetime(self) -> Option<OffsetDateTime> {
+    ///
+    /// [`Zoned`]: crate::time::Zoned
+    pub fn datetime(&self) -> Option<&Zoned> {
         match self {
             Expiration::Session => None,
-            Expiration::DateTime(v) => Some(v),
+            Expiration::DateTime(v) => Some(&v),
         }
     }
 
@@ -105,20 +103,23 @@ impl Expiration {
     ///
     /// ```rust
     /// use biscotti::Expiration;
-    /// use time::{OffsetDateTime, Duration};
+    /// use biscotti::time::{Zoned, ToSpan};
     ///
-    /// let now = OffsetDateTime::now_utc();
-    /// let one_week = Duration::weeks(1);
+    /// let now = Zoned::now();
+    /// let one_week = 1.weeks();
     ///
-    /// let expires = Expiration::from(now);
-    /// assert_eq!(expires.map(|t| t + one_week).datetime(), Some(now + one_week));
+    /// let expires = Expiration::from(now.clone());
+    /// assert_eq!(
+    ///     expires.map(|t| &t + one_week).datetime(),
+    ///     Some(&now + one_week).as_ref()
+    /// );
     ///
     /// let expires = Expiration::from(None);
-    /// assert_eq!(expires.map(|t| t + one_week).datetime(), None);
+    /// assert_eq!(expires.map(|t| &t + one_week).datetime(), None);
     /// ```
     pub fn map<F>(self, f: F) -> Self
     where
-        F: FnOnce(OffsetDateTime) -> OffsetDateTime,
+        F: FnOnce(Zoned) -> Zoned,
     {
         match self {
             Expiration::Session => Expiration::Session,
@@ -127,7 +128,7 @@ impl Expiration {
     }
 }
 
-impl<T: Into<Option<OffsetDateTime>>> From<T> for Expiration {
+impl<T: Into<Option<Zoned>>> From<T> for Expiration {
     fn from(option: T) -> Self {
         match option.into() {
             Some(value) => Expiration::DateTime(value),

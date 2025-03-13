@@ -1,9 +1,9 @@
+use jiff::tz::TimeZone;
+use jiff::{SignedDuration, Zoned};
+
 use crate::{Expiration, RemovalCookie, ResponseCookieId, SameSite};
 use std::borrow::Cow;
 use std::fmt;
-use time::format_description::FormatItem;
-use time::macros::{datetime, format_description};
-use time::{Duration, OffsetDateTime, UtcOffset};
 
 /// A cookie set by a server in an HTTP response using the `Set-Cookie` header.
 ///
@@ -40,7 +40,7 @@ pub struct ResponseCookie<'c> {
     /// The cookie's expiration, if any.
     pub(crate) expires: Option<Expiration>,
     /// The cookie's maximum age, if any.
-    pub(crate) max_age: Option<Duration>,
+    pub(crate) max_age: Option<SignedDuration>,
     /// The cookie's domain, if any.
     pub(crate) domain: Option<Cow<'c, str>>,
     /// The cookie's path domain, if any.
@@ -343,16 +343,16 @@ impl<'c> ResponseCookie<'c> {
     /// # Example
     ///
     /// ```
-    /// use biscotti::{ResponseCookie, time::Duration};
+    /// use biscotti::{ResponseCookie, time::SignedDuration};
     ///
     /// let mut c = ResponseCookie::new("name", "value");
     /// assert_eq!(c.max_age(), None);
     ///
-    /// c = c.set_max_age(Duration::hours(1));
-    /// assert_eq!(c.max_age().map(|age| age.whole_hours()), Some(1));
+    /// c = c.set_max_age(SignedDuration::from_hours(1));
+    /// assert_eq!(c.max_age().map(|age| age.as_hours()), Some(1));
     /// ```
     #[inline]
-    pub fn max_age(&self) -> Option<Duration> {
+    pub fn max_age(&self) -> Option<SignedDuration> {
         self.max_age
     }
 
@@ -424,21 +424,24 @@ impl<'c> ResponseCookie<'c> {
     ///
     /// ```
     /// use biscotti::{ResponseCookie, Expiration};
-    /// use time::{OffsetDateTime, macros::{date, time}};
+    /// use biscotti::time::{tz::TimeZone, civil::date};
     ///
     /// let mut c = ResponseCookie::new("name", "value");
     /// assert_eq!(c.expires(), None);
     ///
     /// c = c.set_expires(None);
-    /// assert_eq!(c.expires(), Some(Expiration::Session));
+    /// assert_eq!(c.expires(), Some(&Expiration::Session));
     ///
-    /// let expire_time = OffsetDateTime::new_utc(date!(2017-10-21), time!(07:28:00));
+    /// let expire_time = date(2017, 10, 21)
+    ///     .at(7, 28, 0, 0)
+    ///     .to_zoned(TimeZone::UTC)
+    ///     .unwrap();
     /// c = c.set_expires(Some(expire_time));
     /// assert_eq!(c.expires().and_then(|e| e.datetime()).map(|t| t.year()), Some(2017));
     /// ```
     #[inline]
-    pub fn expires(&self) -> Option<Expiration> {
-        self.expires
+    pub fn expires(&self) -> Option<&Expiration> {
+        self.expires.as_ref()
     }
 
     /// Returns the expiration date-time of the cookie if one was specified.
@@ -450,7 +453,7 @@ impl<'c> ResponseCookie<'c> {
     ///
     /// ```
     /// use biscotti::{Expiration, ResponseCookie};
-    /// use time::{OffsetDateTime, macros::{date, time}};
+    /// use biscotti::time::{civil::date, tz::TimeZone};
     ///
     /// let mut c = ResponseCookie::new("name", "value");
     /// assert_eq!(c.expires_datetime(), None);
@@ -459,13 +462,16 @@ impl<'c> ResponseCookie<'c> {
     /// c = c.set_expires(Expiration::Session);
     /// assert_eq!(c.expires_datetime(), None);
     ///
-    /// let expire_time = OffsetDateTime::new_utc(date!(2017-10-21), time!(07:28:00));
+    /// let expire_time = date(2017, 10, 21)
+    ///     .at(7, 28, 0, 0)
+    ///     .to_zoned(TimeZone::UTC)
+    ///     .unwrap();
     /// c = c.set_expires(Some(expire_time));
     /// assert_eq!(c.expires_datetime().map(|t| t.year()), Some(2017));
     /// ```
     #[inline]
-    pub fn expires_datetime(&self) -> Option<OffsetDateTime> {
-        self.expires.and_then(|e| e.datetime())
+    pub fn expires_datetime(&self) -> Option<&Zoned> {
+        self.expires.as_ref().and_then(|e| e.datetime())
     }
 
     /// Sets the name of `self` to `name`.
@@ -646,22 +652,22 @@ impl<'c> ResponseCookie<'c> {
     /// # Example
     ///
     /// ```rust
-    /// use biscotti::ResponseCookie;
-    /// use biscotti::time::Duration;
+    /// use biscotti::{ResponseCookie, time::SignedDuration};
     ///
     /// # fn main() {
     /// let mut c = ResponseCookie::new("name", "value");
     /// assert_eq!(c.max_age(), None);
     ///
-    /// c = c.set_max_age(Duration::hours(10));
-    /// assert_eq!(c.max_age(), Some(Duration::hours(10)));
+    /// let max_age = SignedDuration::from_hours(10);
+    /// c = c.set_max_age(max_age);
+    /// assert_eq!(c.max_age(), Some(max_age));
     ///
     /// c = c.set_max_age(None);
     /// assert!(c.max_age().is_none());
     /// # }
     /// ```
     #[inline]
-    pub fn set_max_age<D: Into<Option<Duration>>>(mut self, value: D) -> Self {
+    pub fn set_max_age<D: Into<Option<SignedDuration>>>(mut self, value: D) -> Self {
         self.max_age = value.into();
         self
     }
@@ -751,25 +757,25 @@ impl<'c> ResponseCookie<'c> {
     ///
     /// ```
     /// use biscotti::{ResponseCookie, Expiration};
-    /// use biscotti::time::{Duration, OffsetDateTime};
+    /// use biscotti::time::{Span, Zoned};
     ///
     /// let mut c = ResponseCookie::new("name", "value");
     /// assert_eq!(c.expires(), None);
     ///
-    /// let mut now = OffsetDateTime::now_utc();
-    /// now += Duration::weeks(52);
+    /// let mut now = Zoned::now();
+    /// now += Span::new().weeks(52);
     ///
     /// c = c.set_expires(now);
     /// assert!(c.expires().is_some());
     ///
     /// c = c.set_expires(None);
-    /// assert_eq!(c.expires(), Some(Expiration::Session));
+    /// assert_eq!(c.expires(), Some(&Expiration::Session));
     /// ```
     pub fn set_expires<T: Into<Expiration>>(mut self, time: T) -> Self {
-        static MAX_DATETIME: OffsetDateTime = datetime!(9999-12-31 23:59:59.999_999 UTC);
-
-        // RFC 6265 requires dates not to exceed 9999 years.
-        self.expires = Some(time.into().map(|time| std::cmp::min(time, MAX_DATETIME)));
+        // RFC 6265 requires dates not to exceed 9999 years,
+        // but `jiff`'s `Zoned` goes up to 9999 years,
+        // so no need to check at runtime.
+        self.expires = Some(time.into());
         self
     }
 
@@ -784,7 +790,7 @@ impl<'c> ResponseCookie<'c> {
     /// assert_eq!(c.expires(), None);
     ///
     /// c = c.set_expires(None);
-    /// assert_eq!(c.expires(), Some(Expiration::Session));
+    /// assert_eq!(c.expires(), Some(&Expiration::Session));
     ///
     /// c = c.unset_expires();
     /// assert_eq!(c.expires(), None);
@@ -800,8 +806,7 @@ impl<'c> ResponseCookie<'c> {
     /// # Example
     ///
     /// ```rust
-    /// use biscotti::ResponseCookie;
-    /// use biscotti::time::Duration;
+    /// use biscotti::{ResponseCookie, time::SignedDuration};
     ///
     /// # fn main() {
     /// let mut c = ResponseCookie::new("foo", "bar");
@@ -810,13 +815,13 @@ impl<'c> ResponseCookie<'c> {
     ///
     /// c = c.make_permanent();
     /// assert!(c.expires().is_some());
-    /// assert_eq!(c.max_age(), Some(Duration::days(365 * 20)));
+    /// assert_eq!(c.max_age(), Some(SignedDuration::from_hours(24 * 365 * 20)));
     /// # }
     /// ```
     pub fn make_permanent(self) -> Self {
-        let twenty_years = Duration::days(365 * 20);
+        let twenty_years = SignedDuration::from_hours(24 * 365 * 20);
         self.set_max_age(twenty_years)
-            .set_expires(OffsetDateTime::now_utc() + twenty_years)
+            .set_expires(Zoned::now().saturating_add(twenty_years))
     }
 
     /// Make `self` a "removal" cookie by clearing its value and
@@ -825,8 +830,7 @@ impl<'c> ResponseCookie<'c> {
     /// # Example
     ///
     /// ```rust
-    /// use biscotti::ResponseCookie;
-    /// use biscotti::time::{Duration, OffsetDateTime};
+    /// use biscotti::{ResponseCookie, time::Zoned};
     ///
     /// # fn main() {
     /// let c = ResponseCookie::new("foo", "bar");
@@ -837,7 +841,7 @@ impl<'c> ResponseCookie<'c> {
     /// let raw: ResponseCookie = removal.into();
     /// assert_eq!(raw.value(), "");
     /// let expiration = raw.expires_datetime().unwrap();
-    /// assert!(expiration < OffsetDateTime::now_utc());
+    /// assert!(expiration < Zoned::now());
     /// # }
     /// ```
     pub fn into_removal(self) -> RemovalCookie<'c> {
@@ -895,21 +899,18 @@ impl<'c> ResponseCookie<'c> {
         }
 
         if let Some(max_age) = self.max_age() {
-            write!(f, "; Max-Age={}", max_age.whole_seconds())?;
+            write!(f, "; Max-Age={}", max_age.as_secs())?;
         }
 
         if let Some(time) = self.expires_datetime() {
-            let time = time.to_offset(UtcOffset::UTC);
+            static GMT: std::sync::LazyLock<TimeZone> = std::sync::LazyLock::new(|| {
+                jiff::tz::TimeZone::get("GMT")
+                    .expect("Failed to fetch the 'GMT' timezone from the system database")
+            });
 
             // From http://tools.ietf.org/html/rfc2616#section-3.3.1.
-            static FMT1: &[FormatItem<'_>] = format_description!(
-                "[weekday repr:short], [day] [month repr:short] [year padding:none] [hour]:[minute]:[second] GMT"
-            );
-            write!(
-                f,
-                "; Expires={}",
-                time.format(&FMT1).map_err(|_| fmt::Error)?
-            )?;
+            let time = time.with_time_zone(GMT.clone());
+            write!(f, "; Expires={}", time.strftime("%a, %d %b %Y %T %Z"))?;
         }
 
         Ok(())
@@ -987,8 +988,11 @@ impl<'a> AsMut<ResponseCookie<'a>> for ResponseCookie<'a> {
 
 #[cfg(test)]
 mod tests {
+    use jiff::civil::DateTime;
+    use jiff::tz::TimeZone;
+
+    use crate::time::SignedDuration;
     use crate::{ResponseCookie, SameSite};
-    use time::{Date, Duration, Month, OffsetDateTime};
 
     #[test]
     fn format() {
@@ -998,7 +1002,7 @@ mod tests {
         let cookie = ResponseCookie::new("foo", "bar").set_http_only(true);
         assert_eq!(&cookie.to_string(), "foo=bar; HttpOnly");
 
-        let cookie = ResponseCookie::new("foo", "bar").set_max_age(Duration::seconds(10));
+        let cookie = ResponseCookie::new("foo", "bar").set_max_age(SignedDuration::from_secs(10));
         assert_eq!(&cookie.to_string(), "foo=bar; Max-Age=10");
 
         let cookie = ResponseCookie::new("foo", "bar").set_secure(true);
@@ -1016,11 +1020,9 @@ mod tests {
         let cookie = ResponseCookie::new("foo", "bar").set_domain("rust-lang.org");
         assert_eq!(&cookie.to_string(), "foo=bar; Domain=rust-lang.org");
 
-        let expires = OffsetDateTime::new_in_offset(
-            Date::from_calendar_date(2015, Month::October, 21).unwrap(),
-            time::macros::time!(07:28:00),
-            time::UtcOffset::UTC,
-        );
+        let expires = DateTime::constant(2015, 10, 21, 7, 28, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
         let cookie = ResponseCookie::new("foo", "bar").set_expires(expires);
         assert_eq!(
             &cookie.to_string(),
@@ -1060,23 +1062,5 @@ mod tests {
         assert_eq!(&c.to_string(), "foo=bar; SameSite=None");
         c = c.set_secure(true);
         assert_eq!(&c.to_string(), "foo=bar; SameSite=None; Secure");
-    }
-
-    #[test]
-    #[ignore]
-    fn format_date_wraps() {
-        let expires = OffsetDateTime::UNIX_EPOCH + Duration::MAX;
-        let cookie = ResponseCookie::new("foo", "bar").set_expires(expires);
-        assert_eq!(
-            &cookie.to_string(),
-            "foo=bar; Expires=Fri, 31 Dec 9999 23:59:59 GMT"
-        );
-
-        let expires = time::macros::datetime!(9999-01-01 0:00 UTC) + Duration::days(1000);
-        let cookie = ResponseCookie::new("foo", "bar").set_expires(expires);
-        assert_eq!(
-            &cookie.to_string(),
-            "foo=bar; Expires=Fri, 31 Dec 9999 23:59:59 GMT"
-        );
     }
 }

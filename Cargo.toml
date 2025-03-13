@@ -17,21 +17,17 @@ default = ["serde"]
 serde = ["dep:serde"]
 
 [dependencies]
-time = { version = "0.3", default-features = false, features = [
-    "std",
-    "formatting",
-    "macros",
-] }
-percent-encoding = "2.0"
-subtle = "2.5.0"
+jiff = "0.2.4"
+percent-encoding = "2.3"
+subtle = "2.6.1"
 hkdf = "0.12"
 sha2 = "0.10"
-rand = "0.8"
+rand = "0.9"
 aes-gcm-siv = "0.11.1"
-base64 = "0.22.0"
+base64 = "0.22.1"
 hmac = "0.12.1"
 anyhow = "1"
-serde = { version = "1.0.197", features = ["derive"], optional = true }
+serde = { version = "1.0.219", features = ["derive"], optional = true }
 
 [dev-dependencies]
 googletest = "0.11.0"

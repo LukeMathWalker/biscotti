@@ -2,7 +2,7 @@
 //!
 //! # Overview
 //!
-//! You can use `biscotti` to handle cookies in your server.  
+//! You can use `biscotti` to handle cookies in your server.
 //!
 //! It has support for:
 //!
@@ -19,7 +19,7 @@
 //!
 //! # Non-goals
 //!
-//! `biscotti` is not designed to handle cookies on the client side.  
+//! `biscotti` is not designed to handle cookies on the client side.
 //! It doesn't provide any logic to parse the `Set-Cookie` headers returned in a server response.
 //!
 //! # Quickstart
@@ -83,7 +83,7 @@
 //! ## Credits
 //!
 //! `biscotti` is heavily inspired by the [`cookie` crate](https://crates.io/crates/cookie) [Copyright (c) 2017 Sergio Benitez,
-//! Copyright (c) 2014 Alex Crichton].  
+//! Copyright (c) 2014 Alex Crichton].
 //! `biscotti` started as a `cookie` fork and it includes non-negligible portions of its
 //! code.
 //!
@@ -111,6 +111,7 @@ pub use crate::expiration::*;
 pub use crate::same_site::*;
 pub use config::inner::ProcessorConfig;
 pub use crypto::Key;
+pub use jiff as time;
 pub use processor::Processor;
 pub use removal::RemovalCookie;
 pub use request_cookie::RequestCookie;
@@ -118,7 +119,6 @@ pub use request_cookies::RequestCookies;
 pub use response_cookie::ResponseCookie;
 pub use response_cookie_id::ResponseCookieId;
 pub use response_cookies::ResponseCookies;
-pub use time;
 
 /// Errors that can occur when using `biscotti`.
 pub mod errors {

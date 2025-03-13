@@ -1,3 +1,5 @@
+use jiff::tz::TimeZone;
+
 use crate::{ResponseCookie, ResponseCookieId};
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -244,7 +246,7 @@ impl<'c> From<RemovalCookie<'c>> for ResponseCookie<'c> {
             c = c.set_path(path);
         }
         // A date in the past to ensure the client removes the cookie.
-        c = c.set_expires(time::OffsetDateTime::from_unix_timestamp(0).unwrap());
+        c = c.set_expires(jiff::Timestamp::UNIX_EPOCH.to_zoned(TimeZone::UTC));
         c
     }
 }
