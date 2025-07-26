@@ -876,7 +876,7 @@ impl<'c> ResponseCookie<'c> {
         }
 
         if let Some(same_site) = self.same_site() {
-            write!(f, "; SameSite={}", same_site)?;
+            write!(f, "; SameSite={same_site}")?;
         }
 
         if let Some(true) = self.partitioned() {
@@ -891,11 +891,11 @@ impl<'c> ResponseCookie<'c> {
         }
 
         if let Some(path) = self.path() {
-            write!(f, "; Path={}", path)?;
+            write!(f, "; Path={path}")?;
         }
 
         if let Some(domain) = self.domain() {
-            write!(f, "; Domain={}", domain)?;
+            write!(f, "; Domain={domain}")?;
         }
 
         if let Some(max_age) = self.max_age() {
