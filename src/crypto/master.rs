@@ -274,7 +274,7 @@ mod test {
     fn debug_does_not_leak_key() {
         let key = Key::generate();
 
-        assert_eq!(format!("{:?}", key), "Key(\"***\")");
+        assert_eq!(format!("{key:?}"), "Key(\"***\")");
     }
 
     #[cfg(feature = "serde")]
