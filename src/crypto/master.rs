@@ -4,7 +4,7 @@ const MINIMUM_KEY_LENGTH: usize = 32;
 
 /// A cryptographic master key to sign or encrypt cookies.
 #[allow(clippy::derived_hash_with_manual_eq)]
-#[derive(Clone, Eq, Hash)]
+#[derive(Clone, Hash)]
 pub struct Key(Vec<u8>);
 
 #[cfg(feature = "serde")]
@@ -17,9 +17,20 @@ mod deser {
         where
             D: Deserializer<'de>,
         {
-            let bytes = Vec::<u8>::deserialize(deserializer)?;
-            let key = Key::try_from(bytes).map_err(serde::de::Error::custom)?;
-            Ok(key)
+            #[derive(serde::Deserialize)]
+            #[serde(untagged)]
+            enum KeyRepr {
+                Bytes(Vec<u8>),
+                String(String),
+            }
+
+            match KeyRepr::deserialize(deserializer).map_err(|_| {
+                serde::de::Error::custom("invalid key format: expected a byte array or a string")
+            })? {
+                KeyRepr::Bytes(b) => Key::try_from(b),
+                KeyRepr::String(s) => Key::try_from(s.as_bytes()),
+            }
+            .map_err(serde::de::Error::custom)
         }
     }
 
@@ -40,6 +51,8 @@ impl PartialEq for Key {
         self.0.ct_eq(&other.0).into()
     }
 }
+
+impl Eq for Key {}
 
 impl std::fmt::Debug for Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -262,5 +275,40 @@ mod test {
         let key = Key::generate();
 
         assert_eq!(format!("{:?}", key), "Key(\"***\")");
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn deserialize_key_from_string() {
+        use serde_json::from_str;
+
+        let key_str = "\"01234567890123456789012345678901\"";
+        let key: Result<Key, _> = from_str(key_str);
+        assert!(key.is_ok());
+        assert_eq!(key.unwrap().master(), b"01234567890123456789012345678901");
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn deserialize_key_from_bytes() {
+        use serde_json::from_slice;
+
+        let key_bytes = b"[48,49,50,51,52,53,54,55,56,57,48,49,50,51,52,53,54,55,56,57,48,49,50,51,52,53,54,55,56,57,48,49]";
+        let key: Result<Key, _> = from_slice(key_bytes);
+        assert!(key.is_ok());
+        assert_eq!(key.unwrap().master(), b"01234567890123456789012345678901");
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn deserialize_key_invalid_format() {
+        use serde_json::from_str;
+
+        let invalid_key = "{\"invalid\": \"format\"}";
+        let key: Result<Key, _> = from_str(invalid_key);
+        assert_eq!(
+            key.unwrap_err().to_string(),
+            "invalid key format: expected a byte array or a string"
+        );
     }
 }
