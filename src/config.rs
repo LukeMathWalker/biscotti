@@ -128,6 +128,7 @@ pub(crate) mod inner {
     /// The two cryptographic processes that can be applied to a cookie value.
     #[derive(Debug, Clone, Copy)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
     #[non_exhaustive]
     pub enum CryptoAlgorithm {
         /// The cookie value will be encrypted using [AEAD-AES-256-GCM-SIV](https://www.rfc-editor.org/rfc/rfc8452.html).
