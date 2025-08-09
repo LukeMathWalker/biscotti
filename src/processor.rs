@@ -33,7 +33,7 @@ use std::str::Utf8Error;
 /// # Using a `Processor`
 ///
 /// You need a `Processor`
-/// to invoke [`ResponseCookies::header_values`] and [`RequestCookies::parse_header`].  
+/// to invoke [`ResponseCookies::header_values`] and [`RequestCookies::parse_header`].
 /// You can also use it to transform individual cookies using
 /// [`Processor::process_outgoing`] and [`Processor::process_incoming`].
 ///
@@ -94,6 +94,26 @@ impl Processor {
         }
 
         cookie
+    }
+
+    /// Returns `true` if a cookie with the given name will be encrypted before
+    /// being sent back to the client in the response.
+    ///
+    /// Returns `false` if the cookie will be signed or returned as is.
+    pub fn will_encrypt(&self, name: &str) -> bool {
+        self.rules
+            .get(name)
+            .is_some_and(|rule| matches!(rule.primary, CryptoConfig::Encryption { .. }))
+    }
+
+    /// Returns `true` if a cookie with the given name will be signed before
+    /// being sent back to the client in the response.
+    ///
+    /// Returns `false` if the cookie will be encrypted or returned as is.
+    pub fn will_sign(&self, name: &str) -> bool {
+        self.rules
+            .get(name)
+            .is_some_and(|rule| matches!(rule.primary, CryptoConfig::Signing { .. }))
     }
 
     /// Transform a [`RequestCookie`] before it is added to [`ResponseCookies`].
@@ -376,6 +396,9 @@ mod tests {
         }
         .into();
 
+        assert!(processor.will_encrypt(name));
+        assert!(!processor.will_sign(name));
+
         let cookie = ResponseCookie::new(name, unencrypted_value);
         let encrypted_cookie = processor.process_outgoing(cookie);
         assert_ne!(encrypted_cookie.value(), unencrypted_value);
@@ -410,6 +433,9 @@ mod tests {
             ..Default::default()
         }
         .into();
+
+        assert!(!processor.will_encrypt(name));
+        assert!(processor.will_sign(name));
 
         let cookie = ResponseCookie::new(name, value);
         let signed_cookie = processor.process_outgoing(cookie);
