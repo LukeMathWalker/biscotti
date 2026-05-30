@@ -1,4 +1,4 @@
-use rand::TryRngCore;
+use rand::TryRng;
 
 const MINIMUM_KEY_LENGTH: usize = 32;
 

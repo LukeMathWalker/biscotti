@@ -6,7 +6,7 @@ use aes_gcm_siv::{AeadInPlace, Aes256GcmSiv, KeyInit};
 use anyhow::Context;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use rand::RngCore;
+use rand::Rng;
 use sha2::Sha256;
 
 pub(crate) const NONCE_LEN: usize = 12;
