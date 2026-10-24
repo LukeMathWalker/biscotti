@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> **`biscotti` has moved to [LukeMathWalker/officina](https://github.com/LukeMathWalker/officina/tree/main/biscotti).**
+> This repository is archived: development, issues and releases continue there. The `biscotti` crate on crates.io is unaffected.
+
 # Biscotti
 
 [![Crates.io](https://img.shields.io/crates/v/biscotti)](https://crates.io/crates/biscotti)
